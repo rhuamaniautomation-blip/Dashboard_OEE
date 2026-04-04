@@ -1387,8 +1387,7 @@ class DashboardUI:
         # Despliegue Crudo de Data
         st.markdown("#### Matriz Descriptiva de Acumulación Numérica")
         st.dataframe(
-            df_full.style.format({'Minutos': '{:.1f} m', 'Acumulado %': '{:.2f}%'})
-            .background_gradient(subset=['Minutos'], cmap='Reds'),
+            df_full.style.format({'Minutos': '{:.1f} m', 'Acumulado %': '{:.2f}%'}),
             width="stretch", hide_index=True
         )
 
