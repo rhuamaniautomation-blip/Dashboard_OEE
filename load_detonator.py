@@ -3,18 +3,19 @@
 SISTEMA GERENCIAL DE EFICIENCIA OPERATIVA (OEE) Y ANALÍTICA DE PRODUCCIÓN
 Cliente / Área: Producción - Carga de Detonadores (Máquina 219)
 Empresa: CAVA ROBOTICS
-Versión: 7.0.0 (Build Institucional Definitivo - Arquitectura Empresarial Avanzada)
+Versión: 8.0.0 (Build Institucional Definitivo - Arquitectura Empresarial Avanzada)
 
-Módulos Integrados:
-    1. CoreLogger: Trazabilidad, auditoría y manejo de excepciones silenciosas.
-    2. DataProcessor & ETL: Escáner de Offset, Filtrado Clínico de Fechas y Autocorrección.
-    3. QualityControl: Diagnóstico experto y generación de insights en lenguaje natural.
-    4. BusinessLogic: Motor matemático de extracción directa de OEE (CAPS), Paradas y Volumetría.
-    5. PlotlyEngine: Motor vectorial (Gauges, Pareto, Timeline, Tendencias, Matrices).
-    6. PDFManager: Generador FPDF A4 Multisección (Portada, Resumen, Tablas, Gráficos de Alta Fidelidad).
-    7. ExcelExporter: Exportador de data purificada para respaldos locales y auditorías.
-    8. TelegramGateway: Capa de transmisión API segura con reintentos automáticos.
-    9. DashboardUI: Orquestador UI con Pestañas (Tabs) y Smart Defaults de Fecha Actual.
+Módulos Integrados y Escalados:
+    1.  CoreLogger: Trazabilidad, auditoría y manejo de excepciones silenciosas de grado corporativo.
+    2.  NetworkGateway: Protocolo de acceso directo a directorios compartidos en red local (LAN/WAN).
+    3.  DataProcessor & ETL: Escáner de Offset, Filtrado Clínico de Fechas y Autocorrección estricta.
+    4.  QualityControl: Diagnóstico experto y generación de insights gerenciales en lenguaje natural.
+    5.  BusinessLogic: Motor matemático de extracción directa de OEE (CAPS), Paradas y Volumetría.
+    6.  PlotlyEngine: Motor vectorial optimizado (Timeline y Pareto) de ultra-baja latencia.
+    7.  PDFManager: Generador FPDF A4 Multisección con dibujado algorítmico de tablas nativas.
+    8.  ExcelExporter: Exportador de data purificada para respaldos locales y auditorías en planta.
+    9.  TelegramGateway: Capa de transmisión API segura con reintentos automáticos y encriptación.
+    10. DashboardUI: Orquestador UI con Pestañas (Tabs), Smart Defaults y renderizado asíncrono.
 ====================================================================================================
 """
 
@@ -26,1505 +27,1210 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
 import os
+import sys
 import time
 import logging
 import warnings
+import traceback
+from typing import Dict, List, Tuple, Optional, Any, Union
 from io import BytesIO
 from datetime import datetime, timedelta, date
 
 # --------------------------------------------------------------------------------------------------
-# 1. SUPRESIÓN DE ADVERTENCIAS Y CONFIGURACIÓN DE ENTORNO
+# 1. SUPRESIÓN DE ADVERTENCIAS Y CONFIGURACIÓN DEL ENTORNO DE PRODUCCIÓN
 # --------------------------------------------------------------------------------------------------
-# Mantenemos la terminal limpia de alertas generadas por librerías de terceros (openpyxl, dateutil)
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
 warnings.filterwarnings("ignore", message=".*Could not infer format.*")
-
-try:
-    from office365.sharepoint.client_context import ClientContext
-    from office365.runtime.auth.user_credential import UserCredential
-    from office365.sharepoint.files.file import File
-    SHAREPOINT_AVAILABLE = True
-except ImportError:
-    SHAREPOINT_AVAILABLE = False
+warnings.filterwarnings("ignore", category=FutureWarning)
 
 from fpdf import FPDF
 
 # ==================================================================================================
-# 2. CONFIGURACIÓN GLOBAL E INSTITUCIONAL DE LA PLATAFORMA (UI / UX)
+# 2. CONSTANTES GLOBALES, VOCABULARIO Y CONFIGURACIÓN CORPORATIVA
 # ==================================================================================================
-st.set_page_config(
-    page_title="Dashboard Gerencial OEE - Máquina 219",
-    page_icon="🏭",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Inyección de CSS Avanzado: Estética gerencial, colores cálidos, tipografía institucional corporativa
-st.markdown("""
-    <style>
-    /* Variables de Tema Institucional CAVA Robotics */
-    :root {
-        --primary-color: #0A2540;       /* Azul institucional corporativo (Profundo) */
-        --secondary-color: #C07F00;     /* Dorado/Bronce cálido (Acentos) */
-        --accent-warm: #8B4513;         /* Marrón cálido (SaddleBrown) para detalles */
-        --bg-color: #F4F7F6;            /* Fondo general claro industrial */
-        --card-bg: #FFFFFF;             /* Fondo de tarjetas de métricas */
-        --text-main: #C07F00;           /* Texto principal oscuro */
-        --text-muted: #7F8C8D;          /* Texto secundario / Leyendas */
-        --success-color: #2E8B57;       /* Verde institucional para métricas óptimas */
-        --danger-color: #C0392B;        /* Rojo para alertas y paradas críticas */
-        --warning-color: #D35400;       /* Naranja cálido para advertencias */
-        --border-color: #E2E8F0;        /* Color de bordes sutiles */
-    }
+class EnterpriseConfig:
+    """Contenedor estático principal para configuraciones empresariales y parámetros operativos."""
     
-    /* Reseteo y Fondos Globales */
-    .main { 
+    class API:
+        """Credenciales y parámetros de transmisión para el túnel de Telegram."""
+        TOKEN: str = "8552261657:AAFdXG5ta6UUPyrSco2tqgvNFTTH_LGZw9M"
+        CHAT_ID: str = "6153139566"
+        TIMEOUT_SEC: int = 25
+        MAX_RETRIES: int = 3
+
+    class Operaciones:
+        """Especificaciones Técnicas Constantes de Ingeniería - Máquina 219."""
+        ID_MAQUINA: str = "219"
+        NOMBRE_EQUIPO: str = "Carga de Detonadores(219)"
+        CAPACIDAD_PLACAS_HORA: int = 268
+        DETONADORES_POR_PLACA: int = 40
+        PROD_NOMINAL_HORA: int = CAPACIDAD_PLACAS_HORA * DETONADORES_POR_PLACA # 10,720
+        META_OEE_DEFAULT: float = 85.0
+
+    class Rutas:
+        """Directorios físicos locales para operaciones de I/O y caché."""
+        TEMP: str = "cava_temp_reports"
+        LOGS: str = "cava_system_logs"
+        CACHE: str = "cava_cache_db"
+
+    class UIColors:
+        """Paleta de colores institucionales de CAVA Robotics."""
+        PRIMARY: str = "#0A2540"
+        SECONDARY: str = "#C07F00"
+        ACCENT: str = "#8B4513"
+        SUCCESS: str = "#2E8B57"
+        WARNING: str = "#D35400"
+        DANGER: str = "#C0392B"
+        MUTED: str = "#7F8C8D"
+        BACKGROUND: str = "#F4F7F6"
+        CARD_BG: str = "#FFFFFF"
+
+    @staticmethod
+    def inicializar_infraestructura() -> None:
+        """Despliega la estructura de directorios físicos si el entorno es virgen."""
+        try:
+            for directorio in [EnterpriseConfig.Rutas.TEMP, EnterpriseConfig.Rutas.LOGS, EnterpriseConfig.Rutas.CACHE]:
+                if not os.path.exists(directorio):
+                    os.makedirs(directorio, exist_ok=True)
+        except PermissionError:
+            st.error("Error Crítico de Sistema: Permisos insuficientes para crear directorios base.")
+        except Exception as e:
+            st.error(f"Fallo de I/O en infraestructura: {str(e)}")
+
+EnterpriseConfig.inicializar_infraestructura()
+
+# ==================================================================================================
+# 3. MÓDULO DE TRAZABILIDAD Y AUDITORÍA SILENCIOSA (CORE LOGGER)
+# ==================================================================================================
+class EnterpriseLogger:
+    """Sistema jerárquico de registro de eventos. Mantiene el historial en disco para diagnósticos."""
+    
+    _archivo_log = os.path.join(EnterpriseConfig.Rutas.LOGS, f"cava_kernel_{datetime.now().strftime('%Y%m')}.log")
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s | %(levelname)-8s | CAVA_CORE_V8 | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.FileHandler(_archivo_log, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    _logger = logging.getLogger("CAVA_Enterprise")
+
+    @classmethod
+    def info(cls, msg: str) -> None:
+        """Registra operaciones exitosas y flujo normal del sistema."""
+        cls._logger.info(msg)
+
+    @classmethod
+    def warning(cls, msg: str) -> None:
+        """Registra desviaciones que no detienen el sistema pero requieren atención."""
+        cls._logger.warning(msg)
+
+    @classmethod
+    def error(cls, msg: str, exc_info: bool = False) -> None:
+        """Registra fallos críticos. Opcionalmente incluye el stacktrace."""
+        cls._logger.error(msg, exc_info=exc_info)
+
+    @classmethod
+    def debug(cls, msg: str) -> None:
+        """Registra datos granulares para desarrollo y diagnóstico profundo."""
+        cls._logger.debug(msg)
+
+
+# ==================================================================================================
+# 4. CONFIGURACIÓN VISUAL DEL FRAMEWORK UI Y CSS
+# ==================================================================================================
+def inject_corporate_css() -> None:
+    """Inyecta las hojas de estilo en cascada (CSS) de forma global para un acabado institucional."""
+    st.set_page_config(
+        page_title="Dashboard Gerencial OEE - CAVA",
+        page_icon="⚙️",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    css_payload = f"""
+    <style>
+    /* VARIABLES ESTRUCTURALES */
+    :root {{
+        --primary-color: {EnterpriseConfig.UIColors.PRIMARY};
+        --secondary-color: {EnterpriseConfig.UIColors.SECONDARY};
+        --accent-warm: {EnterpriseConfig.UIColors.ACCENT};
+        --bg-color: {EnterpriseConfig.UIColors.BACKGROUND};
+        --card-bg: {EnterpriseConfig.UIColors.CARD_BG};
+        --text-main: #2C3E50;
+        --text-muted: {EnterpriseConfig.UIColors.MUTED};
+        --success-color: {EnterpriseConfig.UIColors.SUCCESS};
+        --danger-color: {EnterpriseConfig.UIColors.DANGER};
+        --warning-color: {EnterpriseConfig.UIColors.WARNING};
+        --border-color: #E2E8F0;
+    }}
+    
+    /* RESETEO GLOBAL */
+    .main {{ 
         background-color: var(--bg-color); 
         font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
-    }
-    .stApp { background-color: var(--bg-color); }
+    }}
+    .stApp {{ background-color: var(--bg-color); }}
     
-    /* Tipografía Corporativa Jerárquica */
-    h1, h2, h3, h4, h5, h6 { 
+    /* TIPOGRAFÍA INSTITUCIONAL */
+    h1, h2, h3, h4, h5, h6 {{ 
         color: var(--primary-color); 
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
         font-weight: 700;
         letter-spacing: -0.5px;
-    }
+    }}
     
-    /* Contenedores de Tarjetas de Métricas (Cards) */
-    .metric-container { 
+    /* TARJETAS DE MÉTRICAS ULTRA-RÁPIDAS (Reemplazo de Plotly) */
+    .fast-metric-card {{ 
         background-color: var(--card-bg); 
-        border-top: 5px solid var(--secondary-color);
-        border-radius: 10px; 
-        padding: 25px 20px; 
+        border-top: 4px solid var(--secondary-color);
+        border-radius: 8px; 
+        padding: 20px 15px; 
         text-align: center; 
-        box-shadow: 0 6px 15px rgba(0,0,0,0.05); 
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        margin-bottom: 20px;
-        position: relative;
-        overflow: hidden;
-    }
-    .metric-container:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1); 
-    }
-    .metric-title { 
-        font-size: 1.15rem; 
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05); 
+        margin-bottom: 15px;
+        border-left: 1px solid var(--border-color);
+        border-right: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+    }}
+    .fast-metric-title {{ 
+        font-size: 1.05rem; 
         color: var(--text-muted); 
         font-weight: 600; 
-        margin-bottom: 10px; 
+        margin-bottom: 8px; 
         text-transform: uppercase;
-        letter-spacing: 0.8px;
-    }
-    .metric-value { 
-        font-size: 2.6rem; 
-        color: var(--primary-color); 
+        letter-spacing: 0.5px;
+    }}
+    .fast-metric-value {{ 
+        font-size: 2.8rem; 
         font-weight: 800; 
-        line-height: 1.2;
-    }
-    .metric-subtitle {
-        font-size: 0.95rem;
+        line-height: 1.1;
+        font-family: 'Segoe UI', sans-serif;
+    }}
+    .fast-metric-subtitle {{
+        font-size: 0.9rem;
         color: var(--text-muted);
-        margin-top: 5px;
-        font-style: italic;
-    }
+        margin-top: 6px;
+        font-style: normal;
+        border-top: 1px solid #f0f0f0;
+        padding-top: 6px;
+    }}
     
-    /* Panel de Información Relevante (Cabecera) */
-    .info-box {
-        background: linear-gradient(135deg, #FFFFFF 0%, #FFF8E1 100%);
-        border-left: 8px solid var(--secondary-color);
-        padding: 20px 25px;
-        border-radius: 8px;
-        margin-bottom: 30px;
+    /* CABECERA GERENCIAL */
+    .gerencia-header {{
+        background: linear-gradient(135deg, #FFFFFF 0%, #F8F9FA 100%);
+        border-left: 6px solid var(--primary-color);
+        padding: 18px 25px;
+        border-radius: 6px;
+        margin-bottom: 25px;
         color: var(--text-main);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.04);
-    }
-    .info-box h4 {
-        margin-top: 0;
-        color: var(--accent-warm);
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        font-size: 1.4rem;
-        margin-bottom: 12px;
-    }
-    .info-box p { 
-        margin: 5px 0; 
-        font-size: 1.1rem; 
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-    }
-    
-    /* Botones Institucionales de Acción */
-    .stButton>button { 
-        background-color: var(--primary-color); 
-        color: #FFFFFF; 
-        font-weight: 700; 
-        font-size: 1.1rem;
-        border-radius: 6px; 
-        width: 100%; 
-        transition: all 0.3s ease;
-        border: none;
-        padding: 12px 24px;
-        box-shadow: 0 4px 6px rgba(10, 37, 64, 0.2);
-    }
-    .stButton>button:hover { 
-        background-color: var(--secondary-color); 
-        color: #FFFFFF;
-        box-shadow: 0 6px 12px rgba(192, 127, 0, 0.3);
-        transform: translateY(-2px);
-    }
-    
-    /* Tablas y DataFrames de Streamlit */
-    .stDataFrame { 
-        background-color: var(--card-bg); 
-        border-radius: 8px; 
-        border: 1px solid var(--border-color);
         box-shadow: 0 2px 8px rgba(0,0,0,0.03);
-    }
-    
-    /* Separadores horizontales */
-    hr { 
-        border-top: 2px solid var(--border-color); 
-        margin: 2.5rem 0; 
-    }
-    
-    /* Personalización del Panel Lateral (Sidebar) */
-    [data-testid="stSidebar"] {
-        background-color: #FFFFFF;
-        border-right: 1px solid var(--border-color);
-        padding-top: 1rem;
-    }
-    [data-testid="stSidebar"] h2 {
+    }}
+    .gerencia-header h4 {{
+        margin-top: 0;
         color: var(--primary-color);
         font-size: 1.3rem;
-        border-bottom: 2px solid var(--secondary-color);
-        padding-bottom: 5px;
-        margin-bottom: 15px;
-    }
-    
-    /* Tarjetas de auditoria e insights */
-    .audit-card {
-        background-color: #F8F9FA;
-        border: 1px solid #E2E8F0;
-        border-radius: 5px;
-        padding: 12px 18px;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        font-size: 1.05rem;
-        color: #2C3E50;
         margin-bottom: 8px;
-        border-left: 4px solid var(--primary-color);
-    }
+    }}
+    .gerencia-header p {{ 
+        margin: 4px 0; 
+        font-size: 1.05rem; 
+    }}
     
-    /* Pestañas de Streamlit (Tabs) Styling Corporativo */
-    .stTabs [data-baseweb="tab-list"] { 
-        gap: 8px; 
-    }
-    .stTabs [data-baseweb="tab"] { 
-        height: 55px; 
-        white-space: pre-wrap; 
-        background-color: #F0F2F6; 
-        border-radius: 6px 6px 0px 0px; 
-        padding-top: 12px; 
-        padding-bottom: 12px; 
-        color: var(--text-main); 
-        font-weight: 700;
-        font-size: 1.1rem;
-        transition: all 0.3s ease;
-    }
-    .stTabs [aria-selected="true"] { 
+    /* BOTONES CORPORATIVOS */
+    .stButton>button {{ 
         background-color: var(--primary-color); 
-        color: white; 
-        border-bottom: 4px solid var(--secondary-color); 
-    }
+        color: #FFFFFF; 
+        font-weight: 600; 
+        border-radius: 4px; 
+        width: 100%; 
+        border: 1px solid var(--primary-color);
+        padding: 10px 20px;
+        transition: all 0.2s ease;
+    }}
+    .stButton>button:hover {{ 
+        background-color: #FFFFFF; 
+        color: var(--primary-color);
+        border: 1px solid var(--primary-color);
+    }}
     
-    /* Logo Institucional Nativo CSS (Evita links rotos) */
-    .cava-logo-container {
-        background: linear-gradient(135deg, var(--primary-color) 0%, #1A3A5A 100%);
-        padding: 25px 20px; 
+    /* TABLAS DATAFRAME NATIVAS */
+    .stDataFrame {{ 
+        background-color: var(--card-bg); 
+        border-radius: 6px; 
+        border: 1px solid var(--border-color);
+    }}
+    
+    /* SEPARADORES SUTILES */
+    hr {{ border-top: 1px solid #CBD5E1; margin: 2rem 0; }}
+    
+    /* SIDEBAR */
+    [data-testid="stSidebar"] {{
+        background-color: #FFFFFF;
+        border-right: 1px solid var(--border-color);
+    }}
+    
+    /* TABS */
+    .stTabs [data-baseweb="tab-list"] {{ gap: 4px; }}
+    .stTabs [data-baseweb="tab"] {{ 
+        height: 50px; 
+        background-color: #F8F9FA; 
+        border-radius: 4px 4px 0px 0px; 
+        color: var(--text-main); 
+        font-weight: 600;
+        border: 1px solid var(--border-color);
+        border-bottom: none;
+    }}
+    .stTabs [aria-selected="true"] {{ 
+        background-color: #FFFFFF; 
+        color: var(--primary-color); 
+        border-top: 3px solid var(--secondary-color); 
+    }}
+    
+    /* LOGO CAVA NATIVO */
+    .cava-logo-wrapper {{
+        background: var(--primary-color);
+        padding: 20px 15px; 
         text-align: center; 
-        border-radius: 10px; 
-        margin-bottom: 25px; 
-        border-bottom: 5px solid var(--secondary-color);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.15);
-    }
-    .cava-logo-title { 
-        color: var(--secondary-color); 
+        border-radius: 6px; 
+        margin-bottom: 20px; 
+        border-bottom: 4px solid var(--secondary-color);
+    }}
+    .cava-logo-main {{ 
+        color: #FFFFFF; 
         margin: 0; 
         font-family: 'Arial Black', Impact, sans-serif; 
-        font-size: 32px; 
+        font-size: 28px; 
+        letter-spacing: 3px; 
+    }}
+    .cava-logo-sub {{ 
+        color: var(--secondary-color); 
+        margin: 2px 0 0 0; 
+        font-size: 10px; 
         letter-spacing: 2px; 
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
-    }
-    .cava-logo-subtitle { 
-        color: #FFFFFF; 
-        margin: 5px 0 0 0; 
-        font-size: 12px; 
-        letter-spacing: 4px; 
-        font-family: 'Segoe UI', Tahoma, sans-serif; 
-        opacity: 0.95; 
-        font-weight: 600;
-    }
+        font-weight: 700;
+    }}
     </style>
-""", unsafe_allow_html=True)
+    """
+    st.markdown(css_payload, unsafe_allow_html=True)
 
 
 # ==================================================================================================
-# 3. CONSTANTES GLOBALES Y PARÁMETROS TÉCNICOS OPERATIVOS
+# 5. MÓDULO DE SEGURIDAD Y ACCESO A REDES (NETWORK GATEWAY)
 # ==================================================================================================
-class AppConfig:
-    """Contenedor estático para configuraciones empresariales y credenciales del sistema."""
-    # Credenciales API Telegram (Entorno de Producción Segura)
-    TELEGRAM_TOKEN = "8552261657:AAFdXG5ta6UUPyrSco2tqgvNFTTH_LGZw9M"
-    TELEGRAM_CHAT_ID = "6153139566"
-
-    # Especificaciones Técnicas Constantes - Máquina 219
-    MAQUINA_ID = "219"
-    MAQUINA_NOMBRE = "Carga de Detonadores(219)"
-    CAPACIDAD_PLACAS_HORA = 268
-    DETONADORES_POR_PLACA = 40
-    PRODUCCION_NOMINAL_HORA = CAPACIDAD_PLACAS_HORA * DETONADORES_POR_PLACA # 10,720 det/hora
-
-    # Directorios del Sistema para Almacenamiento Temporal de Exportaciones
-    TEMP_DIR = "temp_reports"
-    LOGS_DIR = "system_logs"
+class NetworkGateway:
+    """Gestor de acceso seguro a directorios compartidos y unidades mapeadas de la planta."""
     
     @staticmethod
-    def initialize_environment():
-        """Verifica y crea la arquitectura de directorios locales necesarios de forma robusta."""
+    def validar_ruta_red(ruta_acceso: str) -> Tuple[bool, str]:
+        """
+        Analiza sintácticamente la ruta y verifica los permisos físicos del SO.
+        
+        Args:
+            ruta_acceso (str): Cadena que representa el path absoluto o de red.
+            
+        Returns:
+            Tuple[bool, str]: Estado de éxito y mensaje descriptivo del diagnóstico.
+        """
+        ruta = ruta_acceso.strip().strip('"').strip("'")
+        
+        if not ruta:
+            return False, "La ruta de red proporcionada está vacía."
+            
+        # Bypass lógico si se intenta acceder mediante URL HTTP(s) local
+        if ruta.startswith("http://") or ruta.startswith("https://"):
+            return True, "Enlace web detectado. Se procederá con protocolo HTTP."
+            
+        # Validación de existencia física en el árbol de red local
+        if not os.path.exists(ruta):
+            EnterpriseLogger.error(f"Redinaccesible o archivo inexistente: {ruta}")
+            return False, f"El servidor no responde o el archivo no existe en la ruta: {ruta}"
+            
+        # Comprobación de permisos de lectura (Crucial en entornos compartidos de Producción)
+        if not os.access(ruta, os.R_OK):
+            EnterpriseLogger.error(f"Fallo de permisos (Lectura denegada) en: {ruta}")
+            return False, "Permiso denegado. Solicite a TI acceso de 'Solo Lectura' (Read-Only) a la carpeta."
+            
+        return True, "Enlace establecido y verificado exitosamente."
+
+    @staticmethod
+    def cargar_archivo_en_memoria(ruta_acceso: str) -> Optional[BytesIO]:
+        """
+        Lee el archivo directamente desde la red a la memoria RAM.
+        Protege al sistema de bloqueos de I/O si el archivo está abierto por otro usuario.
+        """
         try:
-            if not os.path.exists(AppConfig.TEMP_DIR):
-                os.makedirs(AppConfig.TEMP_DIR)
-            if not os.path.exists(AppConfig.LOGS_DIR):
-                os.makedirs(AppConfig.LOGS_DIR)
+            ruta = ruta_acceso.strip().strip('"').strip("'")
+            with open(ruta, 'rb') as f:
+                buffer = BytesIO(f.read())
+                EnterpriseLogger.info(f"Carga binaria completa desde red: {ruta}")
+                return buffer
+        except PermissionError:
+            EnterpriseLogger.error("Archivo bloqueado. Otro usuario o el SCADA lo tiene abierto.")
+            st.error("❌ Archivo Bloqueado: El archivo de Excel está siendo modificado actualmente por otro usuario o por el sistema de planta. Intente nuevamente en unos segundos.")
+            return None
         except Exception as e:
-            st.error(f"Fallo crítico al crear directorios de sistema: {e}")
-
-# Inicializar el entorno físico en el servidor local
-AppConfig.initialize_environment()
-
-
-# ==================================================================================================
-# 4. MÓDULO DE LOGGING Y TRAZABILIDAD (CORE LOGGER)
-# ==================================================================================================
-class LogManager:
-    """
-    Sistema robusto de registro de eventos del sistema (Auditoría Gerencial).
-    Escribe tanto en la terminal de ejecución como en un archivo físico de trazabilidad.
-    """
-    log_file_path = os.path.join(AppConfig.LOGS_DIR, f"cava_core_{datetime.now().strftime('%Y%m')}.log")
-    
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - [%(levelname)s] - CAVA_CORE: %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S',
-        handlers=[
-            logging.FileHandler(log_file_path, encoding='utf-8'),
-            logging.StreamHandler()
-        ]
-    )
-    logger = logging.getLogger(__name__)
-
-    @staticmethod
-    def info(msg): LogManager.logger.info(msg)
-
-    @staticmethod
-    def warning(msg): LogManager.logger.warning(msg)
-
-    @staticmethod
-    def error(msg): LogManager.logger.error(msg)
+            EnterpriseLogger.error(f"Excepción I/O durante la transferencia de red: {e}")
+            st.error(f"❌ Error de transferencia: {str(e)}")
+            return None
 
 
 # ==================================================================================================
-# 5. MOTOR DE EXTRACCIÓN Y LIMPIEZA DE DATOS (ETL CLÍNICO AVANZADO)
+# 6. MOTOR DE EXTRACCIÓN Y LIMPIEZA DE DATOS (ETL CLÍNICO AVANZADO)
 # ==================================================================================================
 class DataProcessor:
     """
-    Clase de grado empresarial para el procesamiento, limpieza, validación 
-    y estandarización clínica de DataFrames provenientes de archivos Excel industriales.
+    Clase estática de grado empresarial para el procesamiento, limpieza, validación 
+    y estandarización clínica de DataFrames.
     """
 
     @staticmethod
-    def find_true_header_index(excel_file, sheet_name, keywords):
+    def encontrar_indice_cabecera(excel_data: pd.ExcelFile, hoja: str, palabras_clave: List[str]) -> int:
         """
-        [MOTOR DE ESCANEO DE OFFSET]
-        Analiza las primeras filas del Excel para identificar dónde comienzan realmente 
-        las cabeceras, ignorando logos, espacios vacíos, metadatos o títulos de reporte.
+        [MOTOR DE ESCANEO DE OFFSET DE FILAS]
+        Analiza las primeras 50 filas buscando la intersección exacta de cabeceras,
+        evitando leer logos o descripciones ubicadas arriba de la tabla principal.
         """
         try:
-            # Leer las primeras 35 filas en crudo para ubicar la cabecera real
-            df_raw = excel_file.parse(sheet_name, header=None, nrows=35)
+            df_raw = excel_data.parse(hoja, header=None, nrows=50)
             
-            for idx, row in df_raw.iterrows():
-                # Exigencia estricta: Debemos encontrar las palabras exactas en la fila
-                match_count = 0
-                for kw in keywords:
-                    kw_upper = str(kw).upper()
-                    for val in row.values:
-                        # Conversión explícita a string para blindar el entorno de tipo float (NaN)
-                        val_str = str(val).strip().upper()
-                        # Búsqueda exacta y tolerante a espacios adyacentes
-                        if kw_upper == val_str or f"{kw_upper} " in val_str or f" {kw_upper}" in val_str:
-                            match_count += 1
-                            break # No contar la misma palabra dos veces
+            for idx, fila in df_raw.iterrows():
+                fila_texto = fila.astype(str).str.strip().str.upper()
+                coincidencias = sum(1 for pc in palabras_clave if any(pc in val for val in fila_texto.values))
                 
-                # Criterio de confirmación: Si encontramos coincidencias críticas, es la cabecera
-                if match_count >= 1:
-                    LogManager.info(f"Offset detectado en hoja '{sheet_name}'. Cabecera real en fila index {idx}.")
+                # Tolerancia estricta: Se requiere al menos 1 coincidencia fuerte
+                if coincidencias >= 1:
+                    EnterpriseLogger.debug(f"Cabecera detectada en índice {idx} para hoja {hoja}.")
                     return idx
                     
-            LogManager.warning(f"No se detectó un patrón claro de cabecera en '{sheet_name}'. Asumiendo índice 0 por defecto.")
+            EnterpriseLogger.warning(f"Offset fallido en '{hoja}'. Se procesará desde la fila 0.")
             return 0 
         except Exception as e:
-            LogManager.error(f"Error en escáner de offset para '{sheet_name}': {e}. Se asume cabecera 0.")
+            EnterpriseLogger.error(f"Fallo en escáner de offset para '{hoja}': {e}")
             return 0
 
     @staticmethod
-    def clean_column_names(df):
-        """
-        Purifica las cabeceras eliminando espacios en blanco invisibles al inicio y final,
-        y elimina saltos de línea (\n, \r) originados por exportaciones crudas de SCADA.
-        """
+    def normalizar_columnas(df: pd.DataFrame) -> pd.DataFrame:
+        """Purifica cabeceras eliminando espacios, retornos de carro e inconsistencias SCADA."""
         if df is not None and not df.empty:
-            df.columns = df.columns.astype(str).str.strip().str.replace('\n', ' ').str.replace('\r', '')
+            df.columns = df.columns.astype(str).str.strip().str.replace('\n', ' ').str.replace('\r', '').str.upper()
         return df
 
     @staticmethod
-    def find_column_exact_or_partial(df, keywords_exact, keywords_partial=None):
-        """
-        Algoritmo de búsqueda jerárquica para ubicar columnas aunque cambien levemente de nombre:
-        Fase 1: Busca coincidencia exacta (ignorando mayúsculas y espacios). Ej: "DATE"
-        Fase 2: Si no encuentra exacta, busca coincidencia parcial. Ej: "FECHA DE CARGA"
-        """
-        if df is None or df.empty:
-            return None
-            
-        # Fase 1: Búsqueda Exacta (Máxima precisión)
-        for col in df.columns:
-            col_norm = str(col).strip().upper()
-            if col_norm in [k.upper() for k in keywords_exact]:
-                return col
+    def ubicar_columna(df: pd.DataFrame, exactas: List[str], parciales: Optional[List[str]] = None) -> Optional[str]:
+        """Algoritmo de búsqueda de alta fidelidad para mapear columnas variables."""
+        if df is None or df.empty: return None
+        columnas = df.columns.tolist()
+        
+        # Búsqueda exacta absoluta
+        for col in columnas:
+            if col in [k.upper() for k in exactas]: return col
                 
-        # Fase 2: Búsqueda Parcial (Flexibilidad de respaldo para errores humanos de tipeo)
-        if keywords_partial:
-            for col in df.columns:
-                col_norm = str(col).strip().upper()
-                for kw in keywords_partial:
-                    if kw.upper() in col_norm:
-                        return col
+        # Búsqueda parcial tolerante
+        if parciales:
+            for col in columnas:
+                for kw in parciales:
+                    if kw.upper() in col: return col
         return None
 
     @staticmethod
-    def process_dates(df, sheet_name):
+    def procesar_fechas_clinicas(df: pd.DataFrame, nombre_hoja: str) -> pd.DataFrame:
         """
-        [MOTOR CLÍNICO DE FECHAS]
-        Identifica la columna de fecha con extrema precisión, soluciona vacíos de Excel
-        mediante Forward Fill (ffill) para celdas combinadas, y realiza la conversión absoluta a Date.
-        Esto garantiza que TODAS las filas se enlacen al día seleccionado en el panel.
+        [NÚCLEO CRÍTICO DE FECHAS]
+        Identifica, extrae, rellena (forward-fill) y estandariza las columnas de tiempo.
+        Aplica reglas específicas según el nombre de la hoja.
         """
-        df = DataProcessor.clean_column_names(df)
+        df = DataProcessor.normalizar_columnas(df)
         
-        # Palabras clave exactas estrictas (Evitamos "DAY" para no cruzar con días de la semana de texto)
-        k_exact = ['DATE', 'FECHA']
-        k_partial = ['FECHA', 'DATE'] 
+        col_fecha = None
         
-        col_fecha = DataProcessor.find_column_exact_or_partial(df, k_exact, k_partial)
+        # Regla de Negocio Estricta: Si es la hoja CAPS, la fecha está en la columna B (Index 1)
+        if 'CAPS' in nombre_hoja.upper() and len(df.columns) > 1:
+            posible_columna_b = df.columns[1]
+            if 'DATE' in posible_columna_b or 'FECHA' in posible_columna_b:
+                col_fecha = posible_columna_b
+                EnterpriseLogger.info("Mapeo directo aplicado: Columna B asignada como matriz de tiempo en CAPS.")
+        
+        # Si la regla estricta falla o es otra hoja, usar búsqueda algorítmica
+        if not col_fecha:
+            col_fecha = DataProcessor.ubicar_columna(df, ['DATE', 'FECHA'], ['FECHA', 'DATE'])
         
         if col_fecha:
-            LogManager.info(f"Columna de fecha anclada exitosamente como '{col_fecha}' en '{sheet_name}'.")
-            
-            # 1. Aplicación de Forward Fill para rellenar vacíos por celdas combinadas en Excel
+            # 1. Aplicación de Forward Fill para rellenar vacíos por celdas combinadas de Excel
             df[col_fecha] = df[col_fecha].ffill()
             
-            # 2. Coerción robusta: valores inválidos se vuelven NaT (Not a Time)
+            # 2. Coerción matemática a objetos datetime
             df['FECHA_DATETIME'] = pd.to_datetime(df[col_fecha], errors='coerce')
             
-            # 3. Limpieza de memoria y eliminación de filas basura al final del excel
+            # 3. Purga de datos inútiles (filas sin fecha válida)
             df = df.dropna(subset=['FECHA_DATETIME']).copy()
             
-            # 4. Estandarización Absoluta a Objeto DATE (Hora truncada) para cruce preciso con el Dashboard
+            # 4. Estandarización a Date para filtros de Dashboard
             df['FECHA_STD'] = df['FECHA_DATETIME'].dt.date
             
-            # 5. Dimensiones temporales analíticas auxiliares
+            # 5. Extensiones dimensionales
             df['AÑO'] = df['FECHA_DATETIME'].dt.year
             df['MES'] = df['FECHA_DATETIME'].dt.month
             df['SEMANA'] = df['FECHA_DATETIME'].dt.isocalendar().week
         else:
-            LogManager.error(f"Fallo crítico: No se detectó columna de fecha válida en '{sheet_name}'. Estructura de libro inválida.")
-        
+            EnterpriseLogger.error(f"Estructura inválida: No se localizó un vector de fecha en {nombre_hoja}.")
+            
         return df
 
     @staticmethod
-    def extract_time_block(df):
+    def calcular_linea_vida(df: pd.DataFrame) -> pd.DataFrame:
         """
-        [MOTOR PREPARADOR DE LÍNEA DE VIDA]
-        Extrae y construye la 'Hora de Inicio' y 'Hora Final' para el gráfico de Línea de Vida.
-        Si la columna "Hora Final" no existe, proyecta matemáticamente el bloque sumando 
-        los minutos de parada al inicio.
+        Construye vectores temporales absolutos (Inicio y Fin) para cada evento físico
+        de la máquina. Si falta la hora final, la deduce matemáticamente.
         """
-        if df.empty: return df
+        if df.empty or 'FECHA_DATETIME' not in df.columns: return df
         
-        c_inicio = DataProcessor.find_column_exact_or_partial(df, ['HORA INICIO', 'HORA', 'START TIME', 'TIEMPO INICIO'])
-        c_fin = DataProcessor.find_column_exact_or_partial(df, ['HORA FINAL', 'HORA FIN', 'END TIME', 'TIEMPO FIN'])
-        c_min = DataProcessor.find_column_exact_or_partial(df, ['PARADAS (MINUTOS)', 'MINUTOS', 'DURACION', 'TIEMPO PERDIDO'])
+        c_ini = DataProcessor.ubicar_columna(df, ['HORA INICIO', 'HORA'], ['START TIME', 'INICIO'])
+        c_fin = DataProcessor.ubicar_columna(df, ['HORA FINAL', 'HORA FIN'], ['END TIME', 'FIN'])
+        c_min = DataProcessor.ubicar_columna(df, ['PARADAS (MINUTOS)', 'MINUTOS'], ['DURACION', 'TIEMPO'])
 
-        if 'FECHA_DATETIME' not in df.columns:
-            return df
+        def ensamblar_datetime(fecha_base, hora_parcial):
+            try:
+                if isinstance(hora_parcial, datetime): return hora_parcial
+                t_obj = pd.to_datetime(str(hora_parcial).strip(), errors='coerce')
+                if pd.notnull(t_obj):
+                    return pd.Timestamp.combine(fecha_base.date(), t_obj.time())
+                return fecha_base
+            except:
+                return fecha_base
 
-        if c_inicio:
-            def safe_combine(date_val, time_val):
-                """Combina de forma segura un objeto Date con una celda que contiene una Hora."""
-                try:
-                    if isinstance(time_val, datetime): return time_val
-                    t_str = str(time_val).strip()
-                    t_obj = pd.to_datetime(t_str, errors='coerce')
-                    if pd.notnull(t_obj):
-                        return pd.Timestamp.combine(date_val.date(), t_obj.time())
-                    return date_val
-                except:
-                    return date_val
+        if c_ini:
+            df['TL_START'] = df.apply(lambda r: ensamblar_datetime(r['FECHA_DATETIME'], r[c_ini]), axis=1)
 
-            # Anclar hora de inicio
-            df['TIMELINE_START'] = df.apply(lambda row: safe_combine(row['FECHA_DATETIME'], row[c_inicio]), axis=1)
-
-            # Anclar o calcular hora de fin
             if c_fin:
-                df['TIMELINE_END'] = df.apply(lambda row: safe_combine(row['FECHA_DATETIME'], row[c_fin]), axis=1)
+                df['TL_END'] = df.apply(lambda r: ensamblar_datetime(r['FECHA_DATETIME'], r[c_fin]), axis=1)
             elif c_min:
-                df[c_min] = DataProcessor.safe_numeric_conversion(df[c_min])
-                df['TIMELINE_END'] = df.apply(lambda row: row['TIMELINE_START'] + timedelta(minutes=row[c_min]) if pd.notnull(row['TIMELINE_START']) else row['FECHA_DATETIME'], axis=1)
+                df[c_min] = pd.to_numeric(df[c_min], errors='coerce').fillna(0)
+                df['TL_END'] = df.apply(lambda r: r['TL_START'] + timedelta(minutes=r[c_min]) if pd.notnull(r['TL_START']) else r['FECHA_DATETIME'], axis=1)
             else:
-                # Failsafe: Bloque visual mínimo si todo lo demás falla
-                df['TIMELINE_END'] = df['TIMELINE_START'] + timedelta(minutes=15)
-
-            # Corrector de cruces de medianoche o errores manuales de tipeo
-            mask_invertida = df['TIMELINE_END'] < df['TIMELINE_START']
-            df.loc[mask_invertida, 'TIMELINE_END'] = df.loc[mask_invertida, 'TIMELINE_START'] + timedelta(minutes=1)
+                df['TL_END'] = df['TL_START'] + timedelta(minutes=5) # Default failsafe
+                
+            # Corrección de cronología inversa
+            mask_inv = df['TL_END'] < df['TL_START']
+            df.loc[mask_inv, 'TL_END'] = df.loc[mask_inv, 'TL_START'] + timedelta(minutes=1)
 
         return df
 
-    @staticmethod
-    def safe_numeric_conversion(series, fill_value=0.0):
-        """Conversor aritmético seguro que blinda el sistema de textos ingresados por error humano."""
-        return pd.to_numeric(series, errors='coerce').fillna(fill_value)
-
-
-@st.cache_data(show_spinner=False, ttl=3600)
-def load_and_parse_excel(uploaded_file):
+@st.cache_data(show_spinner=False, ttl=1800)
+def orquestar_etl_excel(archivo_binario: bytes) -> Dict[str, pd.DataFrame]:
     """
-    Motor Maestro de Lectura de Excel. 
-    1. Desencripta el archivo y mapea las hojas.
-    2. Ejecuta el escaneo de Offsets buscando las cabeceras.
-    3. Extrae, purifica y formatea los DataFrames específicos.
+    Función maestra del proceso Extract, Transform, Load (ETL).
+    Mapea en memoria las matrices y las procesa de manera aislada.
     """
+    diccionario_matrices = {}
     try:
-        excel_data = pd.ExcelFile(uploaded_file)
-        hojas_disponibles = excel_data.sheet_names
-        data_dict = {}
+        excel_data = pd.ExcelFile(BytesIO(archivo_binario))
+        hojas_fisicas = excel_data.sheet_names
         
-        # Diccionario de inyección: Define qué hojas se necesitan y sus palabras clave
-        targets = {
+        # Mapeo de Diccionario Institucional (Hoja : Requerimientos Mínimos)
+        mapeo_estructural = {
             'CAPS': ['DATE', 'FECHA', 'OEE', 'MACHINE'], 
             'Produccion': ['DATE', 'FECHA', 'OPERADOR', 'CONFORME'],
             'Detalle parada': ['DATE', 'FECHA', 'MINUTOS', 'MOTIVO', 'ESPECIFICA']
         }
 
-        for target_key, keywords in targets.items():
-            # Búsqueda tolerante a tildes (Producción vs Produccion) y variaciones menores
-            hoja_match = [h for h in hojas_disponibles if target_key.upper() in h.upper() or target_key.replace("ó", "o").upper() in h.upper()]
+        for id_matriz, llaves in mapeo_estructural.items():
+            hoja_objetivo = next((h for h in hojas_fisicas if id_matriz.upper() in h.upper() or id_matriz.replace("ó", "o").upper() in h.upper()), None)
             
-            if hoja_match:
-                sheet_name = hoja_match[0]
-                # Ubicar cabecera
-                header_idx = DataProcessor.find_true_header_index(excel_data, sheet_name, keywords)
+            if hoja_objetivo:
+                idx_cab = DataProcessor.encontrar_indice_cabecera(excel_data, hoja_objetivo, llaves)
+                df_crudo = excel_data.parse(hoja_objetivo, header=idx_cab)
+                df_limpio = DataProcessor.procesar_fechas_clinicas(df_crudo, id_matriz)
                 
-                # Extracción tabular
-                df_raw = excel_data.parse(sheet_name, header=header_idx)
-                
-                # Profiling clínico de fechas
-                df_processed = DataProcessor.process_dates(df_raw, target_key)
-                
-                # Tratamiento espacial especial para la Línea de Vida
-                if target_key == 'Detalle parada':
-                    df_processed = DataProcessor.extract_time_block(df_processed)
+                if id_matriz == 'Detalle parada':
+                    df_limpio = DataProcessor.calcular_linea_vida(df_limpio)
                     
-                data_dict[target_key] = df_processed
-                LogManager.info(f"Hoja '{target_key}' parseada íntegramente. Registros de alta fidelidad: {len(df_processed)}")
+                diccionario_matrices[id_matriz] = df_limpio
+                EnterpriseLogger.info(f"Matriz {id_matriz} consolidada: {len(df_limpio)} vectores procesados.")
             else:
-                LogManager.error(f"Ausencia de matriz crítica: No se localizó '{target_key}'.")
-                st.error(f"❌ Error Estructural: El libro no contiene la hoja esperada: '{target_key}'.")
-                data_dict[target_key] = pd.DataFrame()
-
-        return data_dict
+                EnterpriseLogger.warning(f"Matriz ausente en el libro: {id_matriz}.")
+                diccionario_matrices[id_matriz] = pd.DataFrame()
 
     except Exception as e:
-        LogManager.error(f"Colapso masivo en lectura binaria Excel: {e}")
-        st.error(f"❌ Fallo crítico en el motor de lectura: {str(e)}")
-        return None
+        EnterpriseLogger.error(f"Fallo de Kernel ETL: {e}", exc_info=True)
+        st.error(f"❌ Error Estructural al decodificar el Excel: {e}")
+        
+    return diccionario_matrices
 
 
 # ==================================================================================================
-# 6. MOTOR DE FILTRADO MULTI-DIMENSIONAL (MASTER FILTERS)
+# 7. MOTOR DE FILTRADO MULTI-DIMENSIONAL (MASTER FILTERS)
 # ==================================================================================================
-class FilterEngine:
-    """Clase estática matemática que aplica máscaras condicionales temporales y lógicas."""
+class RuleEngine:
+    """Aplica máscaras condicionales matemáticas sobre los DataFrames procesados."""
     
     @staticmethod
-    def apply_master_filters(df, p_inicio, p_fin, p_tipo, p_ano, p_mes, p_sem, turnos_sel):
+    def aplicar_reglas_tiempo(df: pd.DataFrame, inicio: date, fin: date, tipo_filtro: str, 
+                              ano: int, mes: int, sem: int, turnos: List[str]) -> pd.DataFrame:
         if df is None or df.empty or 'FECHA_STD' not in df.columns:
             return df
 
-        # Máscara Cronológica Base
-        mask_time = (df['FECHA_STD'] >= p_inicio) & (df['FECHA_STD'] <= p_fin)
+        # Máscara Cronológica (Vectorización Vectorial Rápida)
+        mascara = (df['FECHA_STD'] >= inicio) & (df['FECHA_STD'] <= fin)
         
-        # Sobreescritura jerárquica para selectores anuales o mensuales
-        if p_tipo == "Año Anualizado" and 'AÑO' in df.columns:
-            mask_time = df['AÑO'] == p_ano
-        elif p_tipo == "Mes Fiscal" and 'MES' in df.columns and 'AÑO' in df.columns:
-            mask_time = (df['AÑO'] == p_ano) & (df['MES'] == p_mes)
-        elif p_tipo == "Semana ISO" and 'SEMANA' in df.columns and 'AÑO' in df.columns:
-            mask_time = (df['AÑO'] == p_ano) & (df['SEMANA'] == p_sem)
+        # Override Jerárquico
+        if tipo_filtro == "Año Anualizado" and 'AÑO' in df.columns:
+            mascara = df['AÑO'] == ano
+        elif tipo_filtro == "Mes Fiscal" and 'MES' in df.columns and 'AÑO' in df.columns:
+            mascara = (df['AÑO'] == ano) & (df['MES'] == mes)
+        elif tipo_filtro == "Semana ISO" and 'SEMANA' in df.columns and 'AÑO' in df.columns:
+            mascara = (df['AÑO'] == ano) & (df['SEMANA'] == sem)
 
-        # Aplicación y clonado en memoria profunda
-        df_filt = df.loc[mask_time].copy()
+        df_filtrado = df.loc[mascara].copy()
         
-        # Máscara Operacional (Turnos)
-        col_turno = DataProcessor.find_column_exact_or_partial(df_filt, ['TURNO', 'SHIFT'])
-        if col_turno and turnos_sel:
-            # Normalización robusta (" Día " -> "DÍA")
-            df_filt[col_turno] = df_filt[col_turno].astype(str).str.strip().str.upper()
-            turnos_norm = [str(t).strip().upper() for t in turnos_sel]
-            df_filt = df_filt[df_filt[col_turno].isin(turnos_norm)]
+        # Máscara Física Operacional (Turnos)
+        c_turno = DataProcessor.ubicar_columna(df_filtrado, ['TURNO', 'SHIFT'])
+        if c_turno and turnos:
+            df_filtrado[c_turno] = df_filtrado[c_turno].astype(str).str.strip().str.upper()
+            turnos_mayus = [str(t).strip().upper() for t in turnos]
+            df_filtrado = df_filtrado[df_filtrado[c_turno].isin(turnos_mayus)]
             
-        return df_filt
+        return df_filtrado
 
 
 # ==================================================================================================
-# 7. MOTOR ANALÍTICO Y DE REGLAS DE NEGOCIO (CÁLCULO EXACTO DE KPIs)
+# 8. MOTOR DE LÓGICA DE NEGOCIO (EXTRACCIÓN EXACTA)
 # ==================================================================================================
 class BusinessLogic:
-    """Ejecuta la consolidación directa desde la matriz Excel respetando sus cálculos de origen."""
+    """Orquestador de cálculos financieros y técnicos basados en la data purificada."""
 
     @staticmethod
-    def calcular_metricas(df_caps, df_prod, df_paradas):
+    def consolidar_kpis(df_caps: pd.DataFrame, df_prod: pd.DataFrame, df_paradas: pd.DataFrame) -> Dict[str, Any]:
         """
-        Garantiza que los datos se extraigan directamente de la hoja CAPS (Disponibilidad, Rendimiento, Calidad, OEE)
-        y de la hoja Produccion para los volúmenes, logrando exactitud clínica del 100%.
+        Extracción directa de promedios ponderados y sumatorias físicas.
+        Calcula el estado del equipo sin simulaciones ni estimaciones.
         """
-        resultados = {
-            # Núcleo OEE Exacto (CAPS)
+        metricas = {
             "OEE": 0.0, "Disponibilidad": 0.0, "Rendimiento": 0.0, "Calidad": 0.0,
-            # Núcleo Volumetría y RH
-            "Prod_Conforme": 0, "Prod_No_Conforme": 0, "Muestras_Calidad": 0, "Operadores": [],
-            "Data_Operadores": pd.DataFrame(),
-            # Núcleo Eventos y Fallas
-            "Top_Paradas": pd.DataFrame(),
-            "Data_Pareto_Total": pd.DataFrame(),
-            "Data_Timeline": df_paradas.copy()
+            "Prod_Conforme": 0, "Prod_No_Conforme": 0, "Muestras_Calidad": 0, 
+            "Operadores": pd.DataFrame(), "Data_Pareto": pd.DataFrame(), "Data_Timeline": df_paradas.copy()
         }
 
-        # ---------------------------------------------------------
-        # A. CÁLCULO DE EFICIENCIA EXACTA: HOJA 'CAPS'
-        # ---------------------------------------------------------
+        # --- A. CÁLCULOS OEE DE PRECISIÓN (CAPS) ---
         if not df_caps.empty:
-            # Filtrado por equipo específico en matrices multi-máquina
-            col_maq = DataProcessor.find_column_exact_or_partial(df_caps, ['MACHINE', 'MAQUINA', 'LÍNEA', 'LINEA', 'EQUIPO'])
-            df_caps_219 = df_caps.copy()
-            if col_maq:
-                mask_219 = df_caps_219[col_maq].astype(str).str.contains('219|Carga de Detonadores', case=False, na=False)
-                if mask_219.any():
-                    df_caps_219 = df_caps_219[mask_219]
+            c_maq = DataProcessor.ubicar_columna(df_caps, ['MACHINE', 'MAQUINA', 'LINEA'])
+            df_foco = df_caps.copy()
+            if c_maq:
+                mask_maq = df_foco[c_maq].astype(str).str.contains(EnterpriseConfig.Operaciones.ID_MAQUINA, case=False, na=False)
+                if mask_maq.any(): df_foco = df_foco[mask_maq]
 
-            # Mapeo exacto de indicadores pre-calculados por el área
-            c_oee  = DataProcessor.find_column_exact_or_partial(df_caps_219, ['OEE'])
-            c_disp = DataProcessor.find_column_exact_or_partial(df_caps_219, ['EQUIPMENT AVAILIBILITY', 'AVAILABILITY', 'DISPONIBILIDAD'])
-            c_perf = DataProcessor.find_column_exact_or_partial(df_caps_219, ['PERFORMANCE', 'RENDIMIENTO'])
-            c_qual = DataProcessor.find_column_exact_or_partial(df_caps_219, ['QUALITY', 'CALIDAD'])
+            def_oee = DataProcessor.ubicar_columna(df_foco, ['OEE'])
+            def_disp = DataProcessor.ubicar_columna(df_foco, ['AVAILABILITY', 'DISPONIBILIDAD'])
+            def_rend = DataProcessor.ubicar_columna(df_foco, ['PERFORMANCE', 'RENDIMIENTO'])
+            def_cal = DataProcessor.ubicar_columna(df_foco, ['QUALITY', 'CALIDAD'])
 
-            def extraer_promedio_clinico(df, col):
-                """Obtiene el promedio válido de la columna elegida. Maneja auto-escalado si el Excel usa decimales."""
-                if col and col in df.columns:
-                    s = pd.to_numeric(df[col], errors='coerce').dropna()
+            def promedio_seguro(columna):
+                if columna and columna in df_foco.columns:
+                    s = pd.to_numeric(df_foco[columna], errors='coerce').dropna()
                     if not s.empty:
-                        val = s.mean()
-                        # Auto-escala heurística a porcentaje: 0.85 -> 85.0%
-                        return (val * 100) if val <= 1.5 else val
+                        v = s.mean()
+                        return (v * 100) if v <= 1.5 else v # Corrección de decimales (0.85 -> 85%)
                 return 0.0
 
-            resultados['OEE'] = extraer_promedio_clinico(df_caps_219, c_oee)
-            resultados['Disponibilidad'] = extraer_promedio_clinico(df_caps_219, c_disp)
-            resultados['Rendimiento'] = extraer_promedio_clinico(df_caps_219, c_perf)
-            resultados['Calidad'] = extraer_promedio_clinico(df_caps_219, c_qual)
+            metricas['OEE'] = promedio_seguro(def_oee)
+            metricas['Disponibilidad'] = promedio_seguro(def_disp)
+            metricas['Rendimiento'] = promedio_seguro(def_rend)
+            metricas['Calidad'] = promedio_seguro(def_cal)
 
-        # ---------------------------------------------------------
-        # B. VOLUMETRÍA Y TRAZABILIDAD: HOJA 'PRODUCCION'
-        # ---------------------------------------------------------
+        # --- B. AUDITORÍA VOLUMÉTRICA ---
         if not df_prod.empty:
-            c_conf   = DataProcessor.find_column_exact_or_partial(df_prod, ['PRODUCCION CONFORME', 'PRODUCCIÓN CONFORME', 'CONFORME'])
-            c_noconf = DataProcessor.find_column_exact_or_partial(df_prod, ['PRODUCCION NO CONFORME', 'PRODUCCIÓN NO CONFORME', 'RECHAZOS', 'NO CONFORME'])
-            c_muest  = DataProcessor.find_column_exact_or_partial(df_prod, ['MUESTRAS DE CALIDAD', 'MUESTRA'])
-            c_ope    = DataProcessor.find_column_exact_or_partial(df_prod, ['OPERADOR', 'OPERARIO', 'COLABORADOR', 'RESPONSABLE'])
+            c_ok = DataProcessor.ubicar_columna(df_prod, ['PRODUCCION CONFORME', 'CONFORME'])
+            c_nok = DataProcessor.ubicar_columna(df_prod, ['PRODUCCION NO CONFORME', 'RECHAZOS'])
+            c_qa = DataProcessor.ubicar_columna(df_prod, ['MUESTRAS DE CALIDAD'])
+            c_op = DataProcessor.ubicar_columna(df_prod, ['OPERADOR', 'RESPONSABLE'])
 
-            # Sumatoria neta de unidades
-            if c_conf: resultados['Prod_Conforme'] = DataProcessor.safe_numeric_conversion(df_prod[c_conf]).sum()
-            if c_noconf: resultados['Prod_No_Conforme'] = DataProcessor.safe_numeric_conversion(df_prod[c_noconf]).sum()
-            if c_muest: resultados['Muestras_Calidad'] = DataProcessor.safe_numeric_conversion(df_prod[c_muest]).sum()
+            if c_ok: metricas['Prod_Conforme'] = pd.to_numeric(df_prod[c_ok], errors='coerce').sum()
+            if c_nok: metricas['Prod_No_Conforme'] = pd.to_numeric(df_prod[c_nok], errors='coerce').sum()
+            if c_qa: metricas['Muestras_Calidad'] = pd.to_numeric(df_prod[c_qa], errors='coerce').sum()
             
-            # Matriz de Responsabilidad por Operador (Intacta)
-            if c_ope: 
-                resultados['Operadores'] = df_prod[c_ope].dropna().unique().tolist()
-                if c_conf:
-                    df_prod[c_conf] = DataProcessor.safe_numeric_conversion(df_prod[c_conf])
-                    df_grouped_op = df_prod.groupby(c_ope)[c_conf].sum().reset_index()
-                    resultados['Data_Operadores'] = df_grouped_op.sort_values(by=c_conf, ascending=False)
+            if c_op and c_ok:
+                df_prod[c_ok] = pd.to_numeric(df_prod[c_ok], errors='coerce').fillna(0)
+                agrupado = df_prod.groupby(c_op)[c_ok].sum().reset_index().sort_values(by=c_ok, ascending=False)
+                metricas['Operadores'] = agrupado
 
-        # ---------------------------------------------------------
-        # C. AUDITORÍA DE FALLAS: HOJA 'DETALLE PARADA'
-        # ---------------------------------------------------------
+        # --- C. LEY DE PARETO APLICADA A FALLAS ---
         if not df_paradas.empty:
-            c_min  = DataProcessor.find_column_exact_or_partial(df_paradas, ['PARADAS (MINUTOS)', 'MINUTOS'])
-            c_desc = DataProcessor.find_column_exact_or_partial(df_paradas, ['DESCRIPCIÓN ESPECIFICA', 'DESCRIPCION ESPECIFICA', 'MOTIVO DE PARADA', 'FALLA'])
-            c_cat = DataProcessor.find_column_exact_or_partial(df_paradas, ['CATEGORY', 'CATEGORIA', 'TIPO'])
+            c_min = DataProcessor.ubicar_columna(df_paradas, ['PARADAS (MINUTOS)', 'MINUTOS'])
+            c_desc = DataProcessor.ubicar_columna(df_paradas, ['DESCRIPCIÓN ESPECIFICA', 'MOTIVO DE PARADA'])
+            c_cat = DataProcessor.ubicar_columna(df_paradas, ['CATEGORY', 'CATEGORIA'])
 
             if c_min and c_desc:
-                df_paradas[c_min] = DataProcessor.safe_numeric_conversion(df_paradas[c_min])
-                
-                # Consolidado Total para la Pestaña de Análisis Profundo
-                df_all_par = df_paradas.groupby(c_desc)[c_min].sum().reset_index()
-                df_all_par = df_all_par.sort_values(by=c_min, ascending=False)
-                df_all_par.rename(columns={c_desc: 'Descripcion', c_min: 'Minutos'}, inplace=True)
-                
-                resultados['Data_Pareto_Total'] = df_all_par
-                
-                # Top 10 Detractores para el Dashboard Principal (Intacto)
-                resultados['Top_Paradas'] = df_all_par.head(10)
+                df_paradas[c_min] = pd.to_numeric(df_paradas[c_min], errors='coerce').fillna(0)
+                pareto_total = df_paradas.groupby(c_desc)[c_min].sum().reset_index().sort_values(by=c_min, ascending=False)
+                pareto_total.rename(columns={c_desc: 'Detractor_Operativo', c_min: 'Impacto_Minutos'}, inplace=True)
+                metricas['Data_Pareto'] = pareto_total
 
-                # Clasificación estándar para la línea de vida
-                if c_cat:
-                    df_paradas['CATEGORIA_STD'] = df_paradas[c_cat].fillna("Sin Categorizar")
-                else:
-                    df_paradas['CATEGORIA_STD'] = "Evento Registrado"
-                    
-                resultados['Data_Timeline'] = df_paradas
+            if c_cat:
+                metricas['Data_Timeline']['CAT_STD'] = metricas['Data_Timeline'][c_cat].fillna("No Asignada")
+            else:
+                metricas['Data_Timeline']['CAT_STD'] = "Evento General"
 
-        return resultados
+        return metricas
 
-
-# ==================================================================================================
-# 8. MÓDULO EXPERTO DE DIAGNÓSTICO EJECUTIVO (QUALITY CONTROL)
-# ==================================================================================================
-class QualityControl:
-    """Genera reportes de hallazgos (insights) basados en el performance extraído frente a las metas."""
+class ExpertDiagnostics:
+    """Sistema lógico de generación de texto para diagnósticos automáticos en el PDF."""
     
     @staticmethod
-    def generate_insights(metrics, target_oee):
-        insights = []
+    def evaluar_performance(metricas: Dict[str, Any], meta: float) -> List[str]:
+        hallazgos = []
         
-        # Auditoría de Meta Global
-        if metrics['OEE'] >= target_oee:
-            insights.append(f"🟢 **Comportamiento Óptimo:** El Índice OEE ({metrics['OEE']:.1f}%) superó la meta gerencial ({target_oee}%).")
+        # Meta Global OEE
+        oee = metricas.get('OEE', 0)
+        if oee >= meta:
+            hallazgos.append(f"El Índice OEE ({oee:.1f}%) ha operado por encima del límite corporativo ({meta}%). Sistema estable.")
         else:
-            brecha = target_oee - metrics['OEE']
-            insights.append(f"🔴 **Desviación de Meta:** Existe una oportunidad de recuperación del {brecha:.1f}% en el OEE Global respecto a la cuota.")
+            brecha = meta - oee
+            hallazgos.append(f"Alerta: Se registra una desviación negativa del {brecha:.1f}% respecto a la cuota base del OEE Global.")
 
-        # Auditoría de Variables TPM (Cuellos de botella)
-        lowest_factor = min(metrics['Disponibilidad'], metrics['Rendimiento'], metrics['Calidad'])
-        if lowest_factor == metrics['Disponibilidad'] and metrics['Disponibilidad'] > 0:
-            insights.append("⚠️ **Diagnóstico de Limite:** La 'Disponibilidad' es el cuello de botella actual (Alto impacto por averías/setup prolongado).")
-        elif lowest_factor == metrics['Rendimiento'] and metrics['Rendimiento'] > 0:
-            insights.append("⚠️ **Diagnóstico de Limite:** El 'Rendimiento' está degradado (Presencia de microparadas o velocidad reducida en la línea).")
-        
-        # Auditoría Volumétrica Físico-Química
-        tasa_rechazo = 0
-        total_prod = metrics['Prod_Conforme'] + metrics['Prod_No_Conforme']
-        if total_prod > 0:
-            tasa_rechazo = (metrics['Prod_No_Conforme'] / total_prod) * 100
-            if tasa_rechazo > 1.0:
-                insights.append(f"🔴 **Alerta de Merma Física:** Tasa de chatarra/rechazo elevada ({tasa_rechazo:.2f}%). Requierese inspección en tolerancias.")
-
-        return insights
-
-
-# ==================================================================================================
-# 9. MOTORES DE VISUALIZACIÓN VECTORIAL AVANZADA (PLOTLY DASHBOARDS & GANTT)
-# ==================================================================================================
-class PlotlyEngine:
-    """Núcleo responsable de la creación de arte visual, gráficos de alta resolución y mapas térmicos."""
-
-    @staticmethod
-    def create_gauge(value, title, target, color_theme):
-        """Gráfico Tipo Manómetro de Precisión Institucional para las métricas base del OEE."""
-        val = max(0, min(value, 100))
-        fig = go.Figure(go.Indicator(
-            mode = "gauge+number+delta",
-            value = val,
-            title = {'text': title, 'font': {'size': 18, 'color': '#0A2540', 'family': 'Segoe UI'}},
-            number = {'suffix': "%", 'font': {'size': 36, 'color': '#0A2540', 'weight': 'bold'}},
-            delta = {'reference': target, 'increasing': {'color': "#2E8B57"}, 'decreasing': {'color': "#C0392B"}},
-            gauge = {
-                'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "#0A2540", 'tickfont': {'size': 14}},
-                'bar': {'color': color_theme, 'thickness': 0.8},
-                'bgcolor': "white",
-                'borderwidth': 2,
-                'bordercolor': "#E2E8F0",
-                'steps': [
-                    {'range': [0, 60], 'color': '#FFEBEE'},            
-                    {'range': [60, target], 'color': '#FFF8E1'},       
-                    {'range': [target, 100], 'color': '#E8F5E9'}       
-                ],
-                'threshold': {'line': {'color': "#C0392B", 'width': 3}, 'thickness': 0.8, 'value': target}
-            }
-        ))
-        fig.update_layout(height=280, margin=dict(l=20, r=20, t=40, b=20), paper_bgcolor='rgba(0,0,0,0)')
-        return fig
-
-    @staticmethod
-    def create_pareto_bar(df_top, title="Análisis Crítico: Top Fallas (Minutos)"):
-        """Gráfico de barras horizontales optimizado para alojar la descripción del error técnico."""
-        if df_top.empty:
-            return go.Figure().update_layout(title="Sin incidentes físicos en el periodo. Operación Impecable.", template="simple_white")
-
-        # Ordenamiento ascendente (Plotly apila de abajo hacia arriba en modo 'h')
-        df_sorted = df_top.sort_values(by='Minutos', ascending=True)
-
-        fig = px.bar(
-            df_sorted, 
-            x='Minutos', y='Descripcion', 
-            orientation='h',
-            text='Minutos', color='Minutos',
-            color_continuous_scale=['#FADBD8', '#C0392B'] 
-        )
-        
-        fig.update_traces(
-            texttemplate='%{text:.1f} min', textposition='outside', 
-            marker_line_color='#0A2540', marker_line_width=1, textfont_size=12
-        )
-        
-        fig.update_layout(
-            title={'text': title, 'font': {'size': 18, 'color': '#0A2540'}},
-            xaxis_title="Minutos de Impacto", yaxis_title="",
-            template="simple_white", height=450,
-            margin=dict(l=10, r=40, t=60, b=10),
-            coloraxis_showscale=False, yaxis=dict(tickfont=dict(size=11))
-        )
-        return fig
-
-    @staticmethod
-    def create_timeline_gantt(df_timeline):
-        """
-        [LÍNEA DE VIDA CRONOLÓGICA] 
-        Genera un diagrama de Gantt que evidencia visualmente las caídas del equipo durante las 24/12H.
-        Permite observar el comportamiento de la máquina a nivel microscópico.
-        """
-        if df_timeline.empty or 'TIMELINE_START' not in df_timeline.columns or 'TIMELINE_END' not in df_timeline.columns:
-            return go.Figure().update_layout(title="Data cronológica insuficiente para trazar la Línea de Vida Operacional", template="simple_white")
-
-        df_g = df_timeline.dropna(subset=['TIMELINE_START', 'TIMELINE_END']).copy()
-        if df_g.empty:
-            return go.Figure().update_layout(title="Formatos de hora (Inicio/Fin) no compatibles para la proyección gráfica", template="simple_white")
-
-        # Asegurar columna descriptiva para el hover del mouse
-        c_desc = DataProcessor.find_column_exact_or_partial(df_g, ['DESCRIPCIÓN ESPECIFICA', 'DESCRIPCION ESPECIFICA', 'MOTIVO'])
-        desc_col = c_desc if c_desc else 'Falla Registrada'
-        
-        # Categoría para agrupar y colorear (Eje Y)
-        cat_col = 'CATEGORIA_STD'
-
-        # Instancia de Timeline Avanzado
-        fig = px.timeline(
-            df_g, 
-            x_start="TIMELINE_START", 
-            x_end="TIMELINE_END", 
-            y=cat_col, 
-            color=cat_col,
-            hover_name=desc_col,
-            title="Línea de Vida Operacional: Trazo Cronológico de Fallas del Equipo",
-            color_discrete_sequence=px.colors.qualitative.Dark24
-        )
-        
-        # Invertir eje Y para estética
-        fig.update_yaxes(autorange="reversed")
-        
-        # Configurar Eje X para mostrar horas detalladas del turno
-        fig.update_layout(
-            xaxis=dict(
-                title="Horario del Turno Analizado",
-                tickformat="%H:%M", # Formato de hora estándar
-                showgrid=True,
-                gridcolor='#E2E8F0',
-                tickangle=-45
-            ),
-            yaxis_title="Agrupación de Eventos",
-            template="simple_white",
-            height=400,
-            showlegend=False, 
-            margin=dict(t=60, b=60, l=20, r=20)
-        )
-        return fig
-
-    @staticmethod
-    def create_operator_pie(df_op):
-        """Gráfico tipo Dona que ilustra el reparto porcentual exacto de responsabilidad productiva."""
-        if df_op is None or df_op.empty: return go.Figure()
-        
-        col_ope = df_op.columns[0]
-        col_val = df_op.columns[1]
-        
-        fig = px.pie(
-            df_op, 
-            values=col_val, names=col_ope, 
-            hole=0.45, 
-            title="Distribución Neta por Colaborador",
-            color_discrete_sequence=['#0A2540', '#C07F00', '#8B4513', '#2E8B57', '#7F8C8D']
-        )
-        fig.update_traces(
-            textposition='inside', textinfo='percent+label',
-            marker=dict(line=dict(color='#FFFFFF', width=2))
-        )
-        fig.update_layout(height=450, showlegend=False, margin=dict(t=50, b=20, l=10, r=10))
-        return fig
-
-    @staticmethod
-    def create_pareto_advanced(df_full):
-        """
-        [PANTALLA DE ANÁLISIS PROFUNDO]
-        Gráfica Pareto Corporativa combinada (Barras + Línea Acumulada 80/20) para el nuevo Tab analítico.
-        """
-        if df_full.empty: return go.Figure()
-        
-        df = df_full.copy()
-        df['Acumulado %'] = (df['Minutos'].cumsum() / df['Minutos'].sum()) * 100
-        
-        fig = go.Figure()
-        # Capa 1: Barras Físicas
-        fig.add_trace(go.Bar(
-            x=df['Descripcion'], y=df['Minutos'], 
-            name='Impacto (Minutos)', marker_color='#C07F00',
-            text=df['Minutos'].round(1), textposition='outside'
-        ))
-        # Capa 2: Línea Acumulada Porcentual (Principio de Pareto)
-        fig.add_trace(go.Scatter(
-            x=df['Descripcion'], y=df['Acumulado %'], 
-            name='Acumulado %', yaxis='y2', 
-            mode='lines+markers', marker=dict(color='#0A2540', size=8), line=dict(width=3)
-        ))
-
-        fig.update_layout(
-            title="Análisis Espectral de Fallas (Curva de Pareto 80/20 Acumulada)",
-            template="simple_white", height=550,
-            yaxis=dict(title='Minutos Netos de Impacto', showgrid=True, gridcolor='#F0F0F0'),
-            yaxis2=dict(title='Acumulado Frecuencial (%)', overlaying='y', side='right', range=[0, 105], showgrid=False),
-            legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
-            xaxis_tickangle=-45, margin=dict(b=140) # Espacio generoso inferior para leer las fallas
-        )
-        
-        # Marcador de alerta roja al 80%
-        fig.add_hline(y=80, yref='y2', line_dash="dash", line_color="#C0392B", annotation_text="Frontera de Foco Crítico (80%)", annotation_position="bottom right")
-        return fig
+        # Teoría de Restricciones
+        d, r, c = metricas.get('Disponibilidad', 0), metricas.get('Rendimiento', 0), metricas.get('Calidad', 0)
+        menor = min(d, r, c)
+        if menor == d and d > 0:
+            hallazgos.append("Cuello de Botella Detectado: La Disponibilidad es el factor limitante. Revisar matriz de micro-paradas mecánicas.")
+        elif menor == r and r > 0:
+            hallazgos.append("Degradación de Ciclo: El Rendimiento se encuentra bajo los estándares. Tiempos de ciclo lentos en el equipo.")
+            
+        # Volumetría
+        total = metricas.get('Prod_Conforme', 0) + metricas.get('Prod_No_Conforme', 0)
+        if total > 0:
+            tasa = (metricas.get('Prod_No_Conforme', 0) / total) * 100
+            if tasa > 2.0:
+                hallazgos.append(f"Desviación Física: La tasa de chatarra/rechazos es inusualmente alta ({tasa:.2f}%).")
+                
+        if not hallazgos:
+            hallazgos.append("La operación no presenta desviaciones críticas registrables en la matriz actual.")
+            
+        return hallazgos
 
 
 # ==================================================================================================
-# 10. MOTOR FPDF AVANZADO PARA REPORTES EJECUTIVOS AUTOMATIZADOS (FORMATO A4 SEGURO)
+# 9. MOTOR FPDF AVANZADO PARA REPORTES EJECUTIVOS AUTOMATIZADOS (FORMATO A4 NATIVO)
 # ==================================================================================================
-class ReportGenerator(FPDF):
+class EnterprisePDFEngine(FPDF):
     """
-    Motor vectorial avanzado para emitir reportes A4 a la gerencia.
-    Arquitectura extendida para asegurar márgenes, evitar traslapes de gráficos y aplicar firmas.
+    Motor avanzado de generación documental. Sustituye la necesidad de imágenes inyectadas
+    dibujando métricas y tablas estructuradas de manera nativa mediante primitivas gráficas FPDF.
     """
-    def __init__(self, ctx_date, turno_str):
+    def __init__(self, ventana_tiempo: str, turnos_activos: str):
         super().__init__(orientation='P', unit='mm', format='A4')
-        self.ctx_date = ctx_date
-        self.turno_str = turno_str
+        self.ventana = ventana_tiempo
+        self.turnos = turnos_activos
         self.set_auto_page_break(auto=True, margin=20)
         self.set_margins(15, 15, 15)
 
     def header(self):
-        """Bloque Header corporativo estricto y persistente."""
+        """Cabecera institucional fija para las páginas subsiguientes."""
         if self.page_no() > 1: 
             self.set_fill_color(10, 37, 64) 
-            self.rect(0, 0, 210, 26, 'F')
-            
+            self.rect(0, 0, 210, 25, 'F')
             self.set_y(8)
-            self.set_font('Arial', 'B', 15)
+            self.set_font('Arial', 'B', 14)
             self.set_text_color(255, 255, 255)
-            self.cell(0, 6, 'INFORME EJECUTIVO DE DESEMPENO (OEE) Y EVENTOS', 0, 1, 'C')
-            
-            self.set_font('Arial', '', 10)
+            self.cell(0, 6, 'REPORTE GERENCIAL DE EFICIENCIA OPERACIONAL (OEE)', 0, 1, 'C')
+            self.set_font('Arial', '', 9)
             self.set_text_color(220, 220, 220)
-            self.cell(0, 6, f'Unidad: Planta Lurin | Maquina {AppConfig.MAQUINA_ID} ({AppConfig.MAQUINA_NOMBRE})', 0, 1, 'C')
+            self.cell(0, 5, f'Línea de Producción: {EnterpriseConfig.Operaciones.NOMBRE_EQUIPO}', 0, 1, 'C')
             self.ln(12)
 
     def footer(self):
-        """Bloque Footer con control de páginas y sellado de tiempo."""
+        """Pie de página automatizado."""
         if self.page_no() > 1:
-            self.set_y(-18)
+            self.set_y(-15)
             self.set_font('Arial', 'I', 8)
-            self.set_text_color(150, 150, 150)
-            self.line(15, 278, 195, 278)
-            self.cell(90, 10, f'Framework Analitico CAVA | Filtro de Emision: {self.ctx_date}', 0, 0, 'L')
-            self.cell(90, 10, f'Pagina {self.page_no()} | Timestamp: {datetime.now().strftime("%Y-%m-%d %H:%M")}', 0, 0, 'R')
+            self.set_text_color(128, 128, 128)
+            self.line(15, 282, 195, 282)
+            self.cell(90, 10, f'Generado por: CAVA Core Engine | Ref: {self.ventana}', 0, 0, 'L')
+            self.cell(90, 10, f'Pág. {self.page_no()} | TS: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 0, 'R')
 
-    def add_cover_page(self):
-        """Renderizado de portada de alto impacto visual."""
+    def render_portada_oficial(self):
+        """Dibuja la portada del documento gerencial con alto contraste corporativo."""
         self.add_page()
         self.set_fill_color(248, 249, 250)
         self.rect(0, 0, 210, 297, 'F') 
         
-        # Banda lateral identificativa dorada
-        self.set_fill_color(192, 127, 0) 
-        self.rect(0, 0, 8, 297, 'F')
+        # Banda Lateral
+        self.set_fill_color(192, 127, 0) # Dorado CAVA
+        self.rect(0, 0, 6, 297, 'F')
 
-        self.ln(50)
-        self.set_font('Arial', 'B', 26)
+        self.ln(60)
+        self.set_font('Arial', 'B', 24)
         self.set_text_color(10, 37, 64)
         self.cell(10)
-        self.cell(0, 15, 'REPORTE GERENCIAL CONSOLIDADO', 0, 1, 'L')
+        self.cell(0, 12, 'DOCUMENTO EJECUTIVO DE', 0, 1, 'L')
         self.cell(10)
-        self.cell(0, 15, 'DE OEE Y VOLUMETRIA', 0, 1, 'L')
+        self.cell(0, 12, 'DESEMPENO PRODUCTIVO (OEE)', 0, 1, 'L')
 
-        self.ln(10)
-        self.set_font('Arial', '', 16)
+        self.ln(15)
+        self.set_font('Arial', 'B', 14)
         self.set_text_color(120, 120, 120)
-        self.cell(10); self.cell(0, 10, f'Activo Estrategico: Carga de Detonadores', 0, 1, 'L')
-        self.cell(10); self.cell(0, 10, f'Identificador Numerico: Maquina {AppConfig.MAQUINA_ID}', 0, 1, 'L')
+        self.cell(10); self.cell(0, 8, f'Identidad de Activo: {EnterpriseConfig.Operaciones.ID_MAQUINA} - {EnterpriseConfig.Operaciones.NOMBRE_EQUIPO}', 0, 1, 'L')
+        self.cell(10); self.cell(0, 8, 'Area Responsable: Produccion Lurin', 0, 1, 'L')
         
-        self.ln(35)
+        self.ln(40)
         
-        # Inyección de Metadata
-        meta_info = [
-            ('Ventana de Analisis:', self.ctx_date), 
-            ('Turnos Integrados:', self.turno_str), 
-            ('Capa de Extraccion:', 'CAVA Robotics Core (Automated System)')
+        datos = [
+            ('Rango Logico de Medicion:', self.ventana), 
+            ('Configuracion de Turnos:', self.turnos), 
+            ('Clasificacion de Doc.:', 'Confidencial - Uso Gerencial')
         ]
         
-        for title, val in meta_info:
+        for titulo, valor in datos:
             self.set_font('Arial', 'B', 12)
             self.set_text_color(10, 37, 64)
             self.cell(10)
-            self.cell(45, 8, title, 0, 0)
+            self.cell(60, 8, titulo, 0, 0)
             self.set_font('Arial', '', 12)
-            self.cell(0, 8, val, 0, 1)
+            self.set_text_color(50, 50, 50)
+            self.cell(0, 8, valor, 0, 1)
 
-    def draw_section_header(self, title):
-        """Pintado de divisores estilizados de sección lógicas en A4."""
+    def draw_caja_metrica_nativa(self, x: float, y: float, w: float, h: float, titulo: str, valor: str, color_borde: list):
+        """Renderizado algorítmico de cajas de métricas sin requerir imágenes PNG (Zero-Latencia)."""
+        self.set_xy(x, y)
+        self.set_fill_color(255, 255, 255)
+        self.set_draw_color(*color_borde)
+        self.set_line_width(0.8)
+        self.rect(x, y, w, h, 'DF')
+        
+        self.set_xy(x, y + 5)
+        self.set_font('Arial', 'B', 10)
+        self.set_text_color(128, 128, 128)
+        self.cell(w, 5, titulo.upper(), 0, 1, 'C')
+        
+        self.set_xy(x, y + 14)
+        self.set_font('Arial', 'B', 22)
+        self.set_text_color(10, 37, 64)
+        self.cell(w, 10, valor, 0, 1, 'C')
+        
+        self.set_line_width(0.2) # Reset
+
+    def ensamblar_cuerpo_tecnico(self, metricas: Dict[str, Any], df_pareto: pd.DataFrame, insights: List[str]):
+        """Construye las páginas interiores del reporte utilizando únicamente primitivas de FPDF."""
+        self.add_page()
+        
+        # --- SECCIÓN 1: HALLAZGOS Y ALERTAS ---
         self.ln(5)
         self.set_font('Arial', 'B', 12)
+        self.set_fill_color(192, 127, 0)
         self.set_text_color(255, 255, 255)
-        self.set_fill_color(192, 127, 0) 
-        self.cell(0, 9, f"   {title.upper()}", 0, 1, 'L', fill=True)
-        self.ln(4)
-
-    def build_executive_body(self, met, imgs_paths, insights):
-        """Maquetado del contenido real. Cuidado extremo en los márgenes de las gráficas."""
-        self.add_page()
+        self.cell(0, 8, "   1. DIAGNOSTICO DEL MOTOR DE INTELIGENCIA", 0, 1, 'L', fill=True)
         
-        # -------------------------------------------------------------
-        # SECCIÓN 1: INSIGHTS E INTELIGENCIA
-        # -------------------------------------------------------------
-        self.draw_section_header('1. Diagnostico Ejecutivo y Hallazgos Relevantes')
+        self.ln(5)
         self.set_font('Arial', '', 11)
-        self.set_text_color(0, 0, 0)
-        for insight in insights:
-            # Purificación del texto Markdown para que FPDF no explote
-            clean_text = insight.replace('**', '').encode('latin-1', 'ignore').decode('latin-1')
-            self.multi_cell(0, 6, f"  - {clean_text}")
-        self.ln(3)
-
-        # -------------------------------------------------------------
-        # SECCIÓN 2: OEE MATRIZ
-        # -------------------------------------------------------------
-        self.draw_section_header('2. Analisis Factorial de Eficiencia de Maquina (OEE)')
+        self.set_text_color(40, 40, 40)
+        for h in insights:
+            self.multi_cell(0, 6, f"  > {h}")
         
-        self.set_font('Arial', 'B', 10)
+        self.ln(10)
+        
+        # --- SECCIÓN 2: KPI MATRICIAL (Dibujado en caliente) ---
+        self.set_font('Arial', 'B', 12)
+        self.set_fill_color(192, 127, 0)
+        self.set_text_color(255, 255, 255)
+        self.cell(0, 8, "   2. DESEMPENO ESTRUCTURAL DE MAQUINA (FACTORES TPM)", 0, 1, 'L', fill=True)
+        self.ln(8)
+        
+        y_cajas = self.get_y()
+        w_caja = 40
+        espacio = 6
+        x_start = 15
+        
+        self.draw_caja_metrica_nativa(x_start, y_cajas, w_caja, 30, "OEE GLOBAL", f"{metricas['OEE']:.1f}%", [10, 37, 64])
+        self.draw_caja_metrica_nativa(x_start + w_caja + espacio, y_cajas, w_caja, 30, "DISPONIB.", f"{metricas['Disponibilidad']:.1f}%", [192, 127, 0])
+        self.draw_caja_metrica_nativa(x_start + 2*(w_caja + espacio), y_cajas, w_caja, 30, "RENDIM.", f"{metricas['Rendimiento']:.1f}%", [192, 127, 0])
+        self.draw_caja_metrica_nativa(x_start + 3*(w_caja + espacio), y_cajas, w_caja, 30, "CALIDAD", f"{metricas['Calidad']:.1f}%", [46, 139, 87])
+        
+        self.set_y(y_cajas + 40)
+        
+        # --- SECCIÓN 3: VOLUMETRÍA ---
+        self.set_font('Arial', 'B', 12)
         self.set_fill_color(10, 37, 64)
         self.set_text_color(255, 255, 255)
-        for col in ['OEE Global', 'Factor Disponibilidad', 'Factor Rendimiento', 'Factor Calidad']: 
-            self.cell(45, 8, col, 1, 0, 'C', fill=True)
-        self.ln()
-        
-        self.set_font('Arial', 'B', 12)
-        self.set_text_color(10, 37, 64)
-        self.set_fill_color(245, 245, 245)
-        for val in [met['OEE'], met['Disponibilidad'], met['Rendimiento'], met['Calidad']]: 
-            self.cell(45, 10, f"{val:.1f}%", 1, 0, 'C', fill=True)
-        self.ln(12)
-
-        # -------------------------------------------------------------
-        # SECCIÓN 3: VOLUMETRÍA NET
-        # -------------------------------------------------------------
-        self.draw_section_header('3. Trazabilidad Volumetrica de Produccion')
+        self.cell(0, 8, "   3. BALANCE FISICO DE VOLUMETRIA", 0, 1, 'L', fill=True)
+        self.ln(5)
         
         self.set_font('Arial', '', 11); self.set_text_color(0, 0, 0)
-        self.cell(100, 9, "Volumen Neto de Produccion Conforme (Liberado):", border='B')
-        self.set_font('Arial', 'B', 11)
-        self.cell(80, 9, f"{met['Prod_Conforme']:,.0f} unidades", border='B', ln=1, align='R')
+        self.cell(100, 8, "Produccion Certificada (Conforme):", border='B')
+        self.set_font('Arial', 'B', 11); self.set_text_color(46, 139, 87)
+        self.cell(80, 8, f"{metricas['Prod_Conforme']:,.0f} uni", border='B', ln=1, align='R')
         
         self.set_font('Arial', '', 11); self.set_text_color(0, 0, 0)
-        self.cell(100, 9, "Volumen Neto de Produccion No Conforme (Rechazo):", border='B')
+        self.cell(100, 8, "Merma Registrada (No Conforme):", border='B')
         self.set_font('Arial', 'B', 11); self.set_text_color(192, 57, 43)
-        self.cell(80, 9, f"{met['Prod_No_Conforme']:,.0f} unidades", border='B', ln=1, align='R')
-        self.set_text_color(0, 0, 0)
+        self.cell(80, 8, f"{metricas['Prod_No_Conforme']:,.0f} uni", border='B', ln=1, align='R')
         
-        self.set_font('Arial', '', 11)
-        self.cell(100, 9, "Muestreos Extraidos para QA/Laboratorio:", border='B')
-        self.set_font('Arial', 'B', 11)
-        self.cell(80, 9, f"{met['Muestras_Calidad']:,.0f} unidades", border='B', ln=1, align='R')
+        self.set_font('Arial', '', 11); self.set_text_color(0, 0, 0)
+        self.cell(100, 8, "Muestreos Extraidos Analitica (QA):", border='B')
+        self.set_font('Arial', 'B', 11); self.set_text_color(128, 128, 128)
+        self.cell(80, 8, f"{metricas['Muestras_Calidad']:,.0f} uni", border='B', ln=1, align='R')
 
-        # -------------------------------------------------------------
-        # INCORPORACIÓN DE GRÁFICOS (Página actual y siguientes)
-        # -------------------------------------------------------------
-        if 'gauges' in imgs_paths:
-            self.ln(8)
-            self.image(imgs_paths['gauges'], x=15, w=180) # Dimensionado perfecto al centro A4
-
-        # NUEVA PÁGINA OBLIGATORIA PARA LAS MACRO-GRÁFICAS
-        self.add_page()
+        self.ln(10)
         
-        self.draw_section_header('4. Linea de Vida Cronologica (Comportamiento Operativo)')
-        if 'timeline' in imgs_paths:
-            self.image(imgs_paths['timeline'], x=15, w=180)
-            self.ln(85) # Resguardo de margen vital posterior a la foto
-
-        self.draw_section_header('5. Auditoria Cientifica de Fallas Criticas (Analisis de Pareto)')
-        if 'pareto_adv' in imgs_paths:
-            # Si el usuario exporta desde la pestaña de Análisis Profundo
-            self.image(imgs_paths['pareto_adv'], x=15, w=180)
-            self.ln(100)
-        elif 'bar_paradas' in imgs_paths:
-            # Fallback a gráfica de barras simple
-            self.image(imgs_paths['bar_paradas'], x=15, w=180)
-            self.ln(90)
-
-        # -------------------------------------------------------------
-        # BLOQUE DE VALIDACIÓN Y FIRMAS AUTÓGRAFAS
-        # -------------------------------------------------------------
-        # Si no hay espacio, añadir nueva página para las firmas
-        if self.get_y() > 240:
-            self.add_page()
-            self.ln(40)
+        # --- SECCIÓN 4: PARETO TABULAR AVANZADO ---
+        if not df_pareto.empty:
+            self.set_font('Arial', 'B', 12)
+            self.set_fill_color(10, 37, 64)
+            self.set_text_color(255, 255, 255)
+            self.cell(0, 8, "   4. AUDITORIA DE FALLAS Y DETRACTORES (TOP 10)", 0, 1, 'L', fill=True)
+            self.ln(3)
             
+            # Cabecera Tabla
+            self.set_font('Arial', 'B', 9)
+            self.set_fill_color(230, 230, 230)
+            self.set_text_color(0, 0, 0)
+            self.cell(130, 7, "Descripcion del Evento Tecnico", 1, 0, 'C', fill=True)
+            self.cell(50, 7, "Perdida de Tiempo (Minutos)", 1, 1, 'C', fill=True)
+            
+            # Filas Tabla
+            self.set_font('Arial', '', 9)
+            for idx, row in df_pareto.head(10).iterrows():
+                motivo = str(row['Detractor_Operativo'])[:65] # Truncamiento seguro
+                mins = f"{row['Impacto_Minutos']:.1f}"
+                self.cell(130, 7, motivo, 1, 0, 'L')
+                self.cell(50, 7, mins, 1, 1, 'R')
+                
+        # --- BLOQUE DE FIRMAS FINALES ---
+        if self.get_y() > 230: self.add_page()
         self.ln(25)
-        self.set_font('Arial', '', 10)
-        # Dibujado de líneas de firma equilibradas
+        self.set_draw_color(0, 0, 0)
         self.line(30, self.get_y(), 85, self.get_y())
         self.line(125, self.get_y(), 180, self.get_y())
         
         self.ln(2)
-        self.cell(95, 5, 'Vobo. Superintendencia Mantenimiento', 0, 0, 'C')
-        self.cell(90, 5, 'Vobo. Jefatura/Gerencia de Planta', 0, 1, 'C')
+        self.set_font('Arial', '', 9)
+        self.set_text_color(100, 100, 100)
+        self.cell(95, 5, 'Superintendencia de Mantenimiento', 0, 0, 'C')
+        self.cell(90, 5, 'Direccion de Produccion de Planta', 0, 1, 'C')
 
 
 # ==================================================================================================
-# 11. SISTEMA DE TRANSMISIÓN DE DATOS (TELEGRAM API GATEWAY)
+# 10. MÓDULO API TELEGRAM (GATEWAY DE DISTRIBUCIÓN)
 # ==================================================================================================
-class TelegramGateway:
-    """Encapsula los métodos HTTP para el túnel de encriptación y envío de PDF al corporativo."""
-
+class CommGateway:
+    """Clase estática para el despacho del PDF por vías encriptadas (Telegram Bot API)."""
+    
     @staticmethod
-    def dispatch_report(pdf_path, metrics, ctx_date):
-        url = f"https://api.telegram.org/bot{AppConfig.TELEGRAM_TOKEN}/sendDocument"
+    def transmitir_pdf_gerencial(ruta_pdf: str, metricas: Dict[str, Any], ventana: str) -> bool:
+        url = f"https://api.telegram.org/bot{EnterpriseConfig.API.TOKEN}/sendDocument"
         
-        top_falla = metrics['Top_Paradas'].iloc[0]['Descripcion'] if not metrics['Top_Paradas'].empty else 'Operatividad Impecable'
-        top_min = metrics['Top_Paradas'].iloc[0]['Minutos'] if not metrics['Top_Paradas'].empty else 0.0
+        falla_critica = metricas['Data_Pareto'].iloc[0]['Detractor_Operativo'] if not metricas['Data_Pareto'].empty else 'Sin fallos'
+        min_criticos = metricas['Data_Pareto'].iloc[0]['Impacto_Minutos'] if not metricas['Data_Pareto'].empty else 0.0
         
-        # Mensaje estético y gerencial para WhatsApp/Telegram
-        msg_caption = (
-            f"📊 *Reporte Gerencial Consolidado - Maq. {AppConfig.MAQUINA_ID}*\n"
-            f"📅 *Ventana Analizada:* {ctx_date}\n"
-            f"⚙️ *Tasa OEE Cierre:* {metrics['OEE']:.1f}%\n"
-            f"📦 *Volumen QA Pass:* {metrics['Prod_Conforme']:,.0f} unds\n"
-            f"⚠️ *Alerta Falla Mayor:* {top_falla} ({top_min:.1f} min)\n\n"
-            f"_Operación despachada automáticamente desde CAVA Analytics_"
+        cuerpo_mensaje = (
+            f"📊 *REPORTE OEE GENERADO* - Maq. {EnterpriseConfig.Operaciones.ID_MAQUINA}\n"
+            f"📅 *Segmento:* {ventana}\n\n"
+            f"⚙️ *Factor OEE:* {metricas['OEE']:.1f}%\n"
+            f"📦 *Volumen QA:* {metricas['Prod_Conforme']:,.0f} u.\n"
+            f"⚠️ *Alerta Mayor:* {falla_critica} ({min_criticos:.1f} min)\n\n"
+            f"_Despacho Automatizado CAVA Kernel_"
         )
         
         try:
-            with open(pdf_path, 'rb') as file_binary:
-                payload_files = {'document': file_binary}
-                payload_data = {'chat_id': AppConfig.TELEGRAM_CHAT_ID, 'caption': msg_caption, 'parse_mode': 'Markdown'}
+            with open(ruta_pdf, 'rb') as archivo:
+                payload = {'document': archivo}
+                datos = {'chat_id': EnterpriseConfig.API.CHAT_ID, 'caption': cuerpo_mensaje, 'parse_mode': 'Markdown'}
+                resp = requests.post(url, files=payload, data=datos, timeout=EnterpriseConfig.API.TIMEOUT_SEC)
                 
-                LogManager.info("Ejecutando Handshake de Red con API de Telegram...")
-                response = requests.post(url, files=payload_files, data=payload_data, timeout=20)
-                
-            if response.status_code == 200:
-                LogManager.info("Carga de Blob y transmisión de Reporte completada al 100%.")
+            if resp.status_code == 200:
+                EnterpriseLogger.info("Sincronización API Telegram completada.")
                 return True
-            else:
-                LogManager.error(f"Fallo HTTP POST Telegram. Status Code: {response.status_code} - Log: {response.text}")
-                return False
-        except requests.exceptions.RequestException as e:
-            LogManager.error(f"Interrupción de TimeOut o DNS en TelegramGateway: {e}")
+            EnterpriseLogger.error(f"Error API: Código {resp.status_code}. Response: {resp.text}")
+            return False
+        except Exception as e:
+            EnterpriseLogger.error(f"Fallo crítico de socket en CommGateway: {e}")
             return False
 
 
 # ==================================================================================================
-# 12. ORQUESTADOR PRINCIPAL UI: TABLERO INTERACTIVO EN STREAMLIT
+# 11. SUBSISTEMA DE RENDERIZADO VISUAL VECTORIAL (PLOTLY GANTT/BARRAS)
 # ==================================================================================================
-class DashboardUI:
-    """Clase maestra que gobierna el ciclo de vida de la aplicación, interacción y rendering HTML."""
+class VectorEngine:
+    """Dibuja únicamente los gráficos estrictamente necesarios para el análisis de fallas (No gauges, no latencia)."""
+
+    @staticmethod
+    def renderizar_linea_vida(df_gantt: pd.DataFrame) -> go.Figure:
+        """Diagrama microscópico de eventos operacionales a lo largo del tiempo."""
+        if df_gantt.empty or 'TL_START' not in df_gantt.columns:
+            return go.Figure().update_layout(title="Datos insuficientes para Línea de Vida", template="simple_white")
+
+        df = df_gantt.dropna(subset=['TL_START', 'TL_END']).copy()
+        col_hover = DataProcessor.ubicar_columna(df, ['DESCRIPCIÓN ESPECIFICA', 'MOTIVO DE PARADA']) or 'Evento'
+        
+        fig = px.timeline(
+            df, x_start="TL_START", x_end="TL_END", y="CAT_STD", color="CAT_STD",
+            hover_name=col_hover, color_discrete_sequence=px.colors.qualitative.Dark24
+        )
+        fig.update_yaxes(autorange="reversed")
+        fig.update_layout(
+            xaxis=dict(title="Cinta de Tiempo", tickformat="%H:%M", gridcolor='#E2E8F0'),
+            yaxis_title="", template="simple_white", height=380, showlegend=False,
+            margin=dict(t=30, b=40, l=10, r=10), title="Auditoría Cronológica de Paradas"
+        )
+        return fig
+
+    @staticmethod
+    def renderizar_pareto_barras(df_pareto: pd.DataFrame) -> go.Figure:
+        """Renderizado en barras horizontales para rápida lectura de detractores."""
+        if df_pareto.empty:
+            return go.Figure().update_layout(title="Operación perfecta. 0 paradas.", template="simple_white")
+
+        df_top = df_pareto.head(15).sort_values(by='Impacto_Minutos', ascending=True)
+
+        fig = px.bar(
+            df_top, x='Impacto_Minutos', y='Detractor_Operativo', orientation='h',
+            text='Impacto_Minutos', color='Impacto_Minutos',
+            color_continuous_scale=['#FFEBEE', '#C0392B']
+        )
+        fig.update_traces(texttemplate='%{text:.1f} m', textposition='outside')
+        fig.update_layout(
+            template="simple_white", height=450, coloraxis_showscale=False,
+            margin=dict(l=10, r=40, t=30, b=10), title="Pareto de Detractores Principales"
+        )
+        return fig
+
+
+# ==================================================================================================
+# 12. ORQUESTADOR CENTRAL (INTERFAZ DE USUARIO STREAMLIT)
+# ==================================================================================================
+class MainKernelUI:
+    """Clase principal que administra el ciclo de vida, estado de variables y repintado de la app."""
 
     def __init__(self):
-        self.data_dict = None
-        self.metricas = None
-        self.ctx_str = ""
-        self.str_turnos = ""
+        self.memoria_db: Dict[str, pd.DataFrame] = {}
+        self.metricas_vivas: Dict[str, Any] = {}
+        self.contexto_fecha: str = ""
+        self.contexto_turno: str = ""
 
-    def render_cava_logo_native(self):
-        """
-        Renderiza el logotipo corporativo de CAVA en formato CSS. 
-        Evita el uso de URLs de imágenes externas rotas y garantiza carga instantánea.
-        """
+    def renderizar_bloque_ingesta(self):
+        """Panel lateral avanzado con acceso exclusivo por Directorio de Red o Carga Directa."""
         st.sidebar.markdown("""
-        <div class="cava-logo-container">
-            <h2 class="cava-logo-title">CAVA</h2>
-            <p class="cava-logo-subtitle">ROBOTICS & AUTOMATION</p>
+        <div class="cava-logo-wrapper">
+            <h2 class="cava-logo-main">CAVA</h2>
+            <p class="cava-logo-sub">ENTERPRISE AUTOMATION</p>
         </div>
         """, unsafe_allow_html=True)
-
-    def calculate_smart_default_dates(self, df_caps):
-        """
-        [MEJORA CODIFICADA: Carga Inteligente al Día de Hoy]
-        Detecta el día exacto en que se encuentra el servidor y carga los datos 
-        del último turno operativo automáticamente.
-        """
-        today_date = datetime.now().date()
-        min_date, max_date = today_date, today_date
         
-        if not df_caps.empty and 'FECHA_STD' in df_caps.columns:
-            min_date = df_caps['FECHA_STD'].min()
-            max_date = df_caps['FECHA_STD'].max()
-            
-        # Logica Smart: Si hoy no hay producción, vete al último día donde sí hubo (max_date)
-        smart_target_date = today_date if min_date <= today_date <= max_date else max_date
-        return min_date, max_date, smart_target_date
-
-    def render_sidebar_ingestion(self):
-        """Módulo físico/cloud de entrada de archivos Excel."""
-        self.render_cava_logo_native()
-        st.sidebar.markdown("## 📥 1. Ingesta de Datos Raw (Brutos)")
+        st.sidebar.markdown("### 🔌 1. Ingesta de Datos (DataLink)")
         
-        data_source = st.sidebar.radio("Metodología de Ingesta:", ["Carga Directa Matriz (.xlsx)", "Integración Cloud SharePoint"])
-        
-        if data_source == "Carga Directa Matriz (.xlsx)":
-            uploaded_file = st.sidebar.file_uploader("Arrastre Matriz OEE de Planta:", type=["xlsx", "xlsm", "xls"])
-            if uploaded_file:
-                with st.spinner("Decodificando, aplicando Offsets de Red y Limpieza Clínica de Fechas..."):
-                    self.data_dict = load_and_parse_excel(uploaded_file)
-        else:
-            with st.sidebar.form("sp_auth_form"):
-                st.info("Autenticación Corporativa Microsoft 365")
-                sp_url = st.text_input("URL Site Root (Site Collection)")
-                sp_user = st.text_input("Credencial Administrativa")
-                sp_pass = st.text_input("Clave de Bóveda", type="password")
-                sp_path = st.text_input("Directorio Relativo Fichero")
-                if st.form_submit_button("Sincronizar Azure/Sharepoint"):
-                    if SHAREPOINT_AVAILABLE:
-                        st.info("Modo de desarrollo local. Requiere bypass de Proxy Corporativo.")
-                    else:
-                        st.error("Dependencias físicas de SharePoint no habilitadas en el Kernel.")
-
-    def render_sidebar_filters(self):
-        """Controlador de flujo de Fechas, Turnos y Targets."""
-        if not self.data_dict: return None
-
-        df_caps = self.data_dict.get('CAPS', pd.DataFrame())
-        df_prod = self.data_dict.get('Produccion', pd.DataFrame())
-        df_par = self.data_dict.get('Detalle parada', pd.DataFrame())
-
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("## 📅 2. Matriz Cronológica Exacta")
-        
-        # Inferencia Inteligente
-        min_date, max_date, smart_target = self.calculate_smart_default_dates(df_caps)
-
-        # Segmentación
-        filtro_tipo = st.sidebar.selectbox("Lente Temporal:", ["Turno de Hoy (Smart)", "Día Exacto", "Semana ISO", "Mes Fiscal", "Año Anualizado", "Rango de Vectores"])
-        
-        f_inicio, f_fin = min_date, max_date
-        p_ano, p_mes, p_sem = None, None, None
-
-        if filtro_tipo == "Turno de Hoy (Smart)":
-            # Forzamos el backend a que fije la fecha en el target inteligente
-            f_inicio, f_fin = smart_target, smart_target
-            st.sidebar.success(f"📌 Auto-enrutado al último turno: {smart_target}")
-            
-        elif filtro_tipo == "Día Exacto":
-            sel_date = st.sidebar.date_input("Día de Inspección:", value=smart_target, min_value=min_date, max_value=max_date)
-            f_inicio, f_fin = sel_date, sel_date
-            
-        elif filtro_tipo == "Rango de Vectores":
-            rango = st.sidebar.date_input("Espacio Continuo de Tiempo:", [min_date, max_date], min_value=min_date, max_value=max_date)
-            if len(rango) == 2: f_inicio, f_fin = rango[0], rango[1]
-            
-        elif filtro_tipo == "Año Anualizado" and 'AÑO' in df_caps.columns:
-            p_ano = st.sidebar.selectbox("Seleccionar Año Fiscal", sorted(df_caps['AÑO'].dropna().unique(), reverse=True))
-            
-        elif filtro_tipo == "Mes Fiscal" and 'AÑO' in df_caps.columns and 'MES' in df_caps.columns:
-            p_ano = st.sidebar.selectbox("Año Base", sorted(df_caps['AÑO'].dropna().unique(), reverse=True))
-            p_mes = st.sidebar.selectbox("Mes Correlativo", sorted(df_caps[df_caps['AÑO']==p_ano]['MES'].dropna().unique()))
-            
-        elif filtro_tipo == "Semana ISO" and 'AÑO' in df_caps.columns and 'SEMANA' in df_caps.columns:
-            p_ano = st.sidebar.selectbox("Año Base", sorted(df_caps['AÑO'].dropna().unique(), reverse=True))
-            p_sem = st.sidebar.selectbox("Semana Productiva ISO", sorted(df_caps[df_caps['AÑO']==p_ano]['SEMANA'].dropna().unique()))
-
-        # Módulo de Turnos
-        turnos_disponibles = []
-        col_t_caps = DataProcessor.find_column_exact_or_partial(df_caps, ['TURNO', 'SHIFT'])
-        if col_t_caps: turnos_disponibles = df_caps[col_t_caps].dropna().unique().tolist()
-        
-        turnos_sel = turnos_disponibles
-        if turnos_disponibles and filtro_tipo in ["Turno de Hoy (Smart)", "Día Exacto"]:
-            turnos_sel = st.sidebar.multiselect("Asignar a Turno(s)", turnos_disponibles, default=turnos_disponibles)
-        elif turnos_disponibles:
-            with st.sidebar.expander("Control de Turnos Complejo"):
-                turnos_sel = st.multiselect("Regla de Modificación Macro", turnos_disponibles, default=turnos_disponibles)
-
-        st.sidebar.markdown("---")
-        st.sidebar.markdown("## 🎯 3. Control de Objetivos")
-        target_oee = st.sidebar.number_input("Benchmark OEE Tasa (%)", value=85.0, step=0.5)
-
-        # Ejecución del Pipeline Matemático en el backend
-        df_caps_f = FilterEngine.apply_master_filters(df_caps, f_inicio, f_fin, filtro_tipo, p_ano, p_mes, p_sem, turnos_sel)
-        df_prod_f = FilterEngine.apply_master_filters(df_prod, f_inicio, f_fin, filtro_tipo, p_ano, p_mes, p_sem, turnos_sel)
-        df_par_f  = FilterEngine.apply_master_filters(df_par,  f_inicio, f_fin, filtro_tipo, p_ano, p_mes, p_sem, turnos_sel)
-
-        self.metricas = BusinessLogic.calcular_metricas(df_caps_f, df_prod_f, df_par_f)
-        
-        # Persistencia de Metadata para Títulos y PDFs
-        if filtro_tipo in ["Turno de Hoy (Smart)", "Día Exacto"]:
-            self.ctx_str = f"{f_inicio}"
-        else:
-            self.ctx_str = f"Ventana Extendida: {f_inicio} hasta {f_fin}"
-            
-        self.str_turnos = ', '.join([str(t) for t in turnos_sel]) if turnos_sel else '100% Cobertura'
-        
-        return target_oee, df_caps_f
-
-    def render_tab_executive_dashboard(self, target_oee, df_caps_f):
-        """
-        [PESTAÑA 1: DASHBOARD RESUMEN] 
-        Construye la vista tradicional, manteniendo el control visual superior y la métrica de volúmenes.
-        """
-        st.markdown("### 1. Cuadro de Mando Integral: Resumen de Desempeño y Producción Neta")
-        c1, c2, c3, c4 = st.columns(4)
-        
-        with c1:
-            co_oee = "var(--success-color)" if self.metricas['OEE'] >= target_oee else "var(--danger-color)"
-            st.markdown(f"<div class='metric-container'><div class='metric-title'>Índice OEE Consolidado</div><div class='metric-value' style='color:{co_oee};'>{self.metricas['OEE']:.1f}%</div><div class='metric-subtitle'>Meta Asignada: {target_oee}%</div></div>", unsafe_allow_html=True)
-        with c2:
-            st.markdown(f"<div class='metric-container'><div class='metric-title'>Producción Neta Conforme</div><div class='metric-value' style='color:var(--primary-color);'>{self.metricas['Prod_Conforme']:,.0f}</div><div class='metric-subtitle'>Volumen Aprobado (Liberado)</div></div>", unsafe_allow_html=True)
-        with c3:
-            st.markdown(f"<div class='metric-container'><div class='metric-title'>Chatarra Física / Mermas</div><div class='metric-value' style='color:var(--warning-color);'>{self.metricas['Prod_No_Conforme']:,.0f}</div><div class='metric-subtitle'>Unidades No Conformes</div></div>", unsafe_allow_html=True)
-        with c4:
-            st.markdown(f"<div class='metric-container'><div class='metric-title'>Destrucción Analítica (QA)</div><div class='metric-value' style='color:var(--text-muted);'>{self.metricas['Muestras_Calidad']:,.0f}</div><div class='metric-subtitle'>Muestreos de Calidad Retirados</div></div>", unsafe_allow_html=True)
-
-        # -------------------------------------------------------------
-        # GAUGES - FACTORES DEL OEE
-        # -------------------------------------------------------------
-        st.markdown("---")
-        st.markdown("### 2. Disgregación Factorial TEE (Disponibilidad, Rendimiento, Calidad)")
-        
-        g1, g2, g3 = st.columns(3)
-        self.fig_disp = PlotlyEngine.create_gauge(self.metricas['Disponibilidad'], "Factor Disponibilidad (A)", 90.0, "#0A2540")
-        self.fig_rend = PlotlyEngine.create_gauge(self.metricas['Rendimiento'], "Factor Rendimiento (P)", 95.0, "#C07F00")
-        self.fig_cal  = PlotlyEngine.create_gauge(self.metricas['Calidad'], "Factor Calidad Global (Q)", 99.0, "#2E8B57")
-        
-        with g1: st.plotly_chart(self.fig_disp, width="stretch")
-        with g2: st.plotly_chart(self.fig_rend, width="stretch")
-        with g3: st.plotly_chart(self.fig_cal, width="stretch")
-
-        # -------------------------------------------------------------
-        # LÍNEA DE VIDA DEL EQUIPO (TIMELINE)
-        # -------------------------------------------------------------
-        st.markdown("---")
-        st.markdown("### 3. Trazabilidad de Estados: Línea de Vida de la Máquina en el Turno")
-        self.fig_timeline = PlotlyEngine.create_timeline_gantt(self.metricas['Data_Timeline'])
-        st.plotly_chart(self.fig_timeline, width="stretch")
-
-        # -------------------------------------------------------------
-        # RESPONSABILIDADES Y TOP 10 (INTACTO)
-        # -------------------------------------------------------------
-        st.markdown("---")
-        col_izq, col_der = st.columns([1.6, 1])
-        
-        with col_izq:
-            st.markdown("### 4. Matriz Pareto Crítica: Top 10 Detractores Operativos (Resumen)")
-            self.fig_bar = PlotlyEngine.create_pareto_bar(self.metricas['Top_Paradas'])
-            st.plotly_chart(self.fig_bar, width="stretch")
-            
-        with col_der:
-            st.markdown("### 5. Responsabilidad Volumétrica por Operador")
-            if 'Data_Operadores' in self.metricas and not self.metricas['Data_Operadores'].empty:
-                self.fig_pie = PlotlyEngine.create_operator_pie(self.metricas['Data_Operadores'])
-                st.plotly_chart(self.fig_pie, width="stretch")
-                
-                # Respaldo Tabular Físico
-                st.markdown("**Matriz Auditiva de Volumen por Colaborador:**")
-                st.dataframe(self.metricas['Data_Operadores'].style.format({self.metricas['Data_Operadores'].columns[1]: "{:,.0f}"}), width="stretch", hide_index=True)
-            else:
-                st.info("La matriz no contiene registros válidos de responsables de operación para este periodo.")
-
-    def render_tab_deep_analytics(self):
-        """
-        [PESTAÑA 2: ANÁLISIS PROFUNDO]
-        Despliega el estudio exhaustivo de Pareto sin límites de Top 10, y traza estadísticas duras.
-        """
-        st.markdown("### 📈 Laboratorio de Análisis Profundo de Incidentes (Pareto Maestro)")
-        st.write("Esta sección rompe el filtro del Top 10 y grafica la totalidad de los incidentes que mermaron la disponibilidad, aplicando la ley matemática del 80/20.")
-        
-        df_full = self.metricas.get('Data_Pareto_Total', pd.DataFrame())
-        
-        if df_full.empty:
-            st.success("Operación a régimen óptimo. El sistema no ha capturado fallos mecánicos ni eléctricos en la matriz clínica.")
-            return
-            
-        # Motor Avanzado
-        self.fig_pareto_adv = PlotlyEngine.create_pareto_advanced(df_full)
-        st.plotly_chart(self.fig_pareto_adv, width="stretch")
-        
-        # Despliegue Crudo de Data
-        st.markdown("#### Matriz Descriptiva de Acumulación Numérica")
-        st.dataframe(
-            df_full.style.format({'Minutos': '{:.1f} m', 'Acumulado %': '{:.2f}%'}),
-            width="stretch", hide_index=True
+        origen = st.sidebar.radio(
+            "Protocolo de Conexión a Servidor:", 
+            ["Carga Manual (.xlsx)", "Ruta de Red Compartida (LAN)"],
+            help="Seleccione el método de aprovisionamiento de la matriz OEE."
         )
-
-    def trigger_pdf_pipeline(self):
-        """
-        Dispara y Orquesta: 
-        1. Renderizado Invisible (Kaleido)
-        2. Ensamblado A4 (FPDF) 
-        3. Túnel API (Telegram)
-        4. Descarga Local
-        """
-        with st.spinner("Desplegando Clúster Gráfico Kaleido. Vectorizando documentos e instanciando Reporte PDF en A4..."):
-            
-            # Ensamble invisible de Gauges para evitar 3 imágenes sueltas en el PDF
-            fig_comb = make_subplots(rows=1, cols=3, specs=[[{'type': 'indicator'}, {'type': 'indicator'}, {'type': 'indicator'}]])
-            fig_comb.add_trace(self.fig_disp.data[0], row=1, col=1)
-            fig_comb.add_trace(self.fig_rend.data[0], row=1, col=2)
-            fig_comb.add_trace(self.fig_cal.data[0], row=1, col=3)
-            fig_comb.update_layout(height=350, margin=dict(t=50, b=20), paper_bgcolor='rgba(255,255,255,1)')
-            
-            img_paths = {}
-            try:
-                # Escribir los plots a disco en ultra-resolución HD
-                p_g = os.path.join(AppConfig.TEMP_DIR, "x_gauges.png")
-                fig_comb.write_image(p_g, engine="kaleido", width=1100, height=320)
-                img_paths['gauges'] = p_g
-                
-                p_b = os.path.join(AppConfig.TEMP_DIR, "x_bar.png")
-                self.fig_bar.write_image(p_b, engine="kaleido", width=950, height=450)
-                img_paths['bar_paradas'] = p_b
-                
-                p_t = os.path.join(AppConfig.TEMP_DIR, "x_time.png")
-                self.fig_timeline.write_image(p_t, engine="kaleido", width=1050, height=450)
-                img_paths['timeline'] = p_t
-                
-                if hasattr(self, 'fig_pareto_adv'):
-                    p_pa = os.path.join(AppConfig.TEMP_DIR, "x_pareto.png")
-                    self.fig_pareto_adv.write_image(p_pa, engine="kaleido", width=1050, height=550)
-                    img_paths['pareto_adv'] = p_pa
+        
+        if origen == "Carga Manual (.xlsx)":
+            archivo = st.sidebar.file_uploader("Subir matriz maestra:", type=["xlsx", "xlsb", "xlsm"])
+            if archivo:
+                with st.spinner("Procesando estructura binaria..."):
+                    self.memoria_db = orquestar_etl_excel(archivo.read())
                     
-            except Exception as e:
-                LogManager.error(f"Error de Kaleido (Vector Rendering): {e}")
-                st.error("No se han podido trazar las gráficas para el PDF. Falla la dependencia 'kaleido'.")
-
-            try:
-                # Creación Física del FPDF A4
-                pdf_engine = ReportGenerator(self.ctx_str, self.str_turnos)
-                pdf_engine.add_cover_page()
-                
-                insights_array = QualityControl.generate_insights(self.metricas, 85.0)
-                pdf_engine.build_executive_body(self.metricas, img_paths, insights_array)
-                
-                pdf_filename = f"Reporte_Consolidado_219_{datetime.now().strftime('%Y%m%d%H%M')}.pdf"
-                pdf_path = os.path.join(AppConfig.TEMP_DIR, pdf_filename)
-                pdf_engine.output(pdf_path)
-
-                # Transmisión vía Bot Telegram (Capa Segura)
-                success = TelegramGateway.dispatch_report(pdf_path, self.metricas, self.ctx_str)
-                if success:
-                    st.success("✅ **Certificado de Éxito:** El Reporte Gerencial fue vectorizado, convertido a A4 y distribuido por WhatsApp/Telegram a la Gerencia.")
-                    st.balloons()
+        elif origen == "Ruta de Red Compartida (LAN)":
+            ruta_red = st.sidebar.text_input(
+                "Enlace Absoluto o Ruta URI:", 
+                placeholder=r"\\SERVIDOR\Produccion\Matriz_OEE.xlsx"
+            )
+            if st.sidebar.button("📡 Sincronizar desde Servidor Local"):
+                if ruta_red:
+                    estado_ok, mensaje = NetworkGateway.validar_ruta_red(ruta_red)
+                    if estado_ok:
+                        with st.spinner("Estableciendo túnel I/O con servidor y extrayendo matrices..."):
+                            buffer_bytes = NetworkGateway.cargar_archivo_en_memoria(ruta_red)
+                            if buffer_bytes:
+                                self.memoria_db = orquestar_etl_excel(buffer_bytes.read())
+                                st.sidebar.success("Sincronización LAN Exitosa.")
+                    else:
+                        st.sidebar.error(mensaje)
                 else:
-                    st.warning("⚠️ Interrupción de Red: El PDF está intacto en la computadora, pero los Servidores de Telegram no respondieron.")
+                    st.sidebar.warning("Debe especificar una ruta de red válida.")
+
+    def renderizar_motor_filtros(self) -> Tuple[float, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Control del pipeline temporal. Lógica Smart Date inyectada."""
+        df_c = self.memoria_db.get('CAPS', pd.DataFrame())
+        df_p = self.memoria_db.get('Produccion', pd.DataFrame())
+        df_d = self.memoria_db.get('Detalle parada', pd.DataFrame())
+
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### ⚙️ 2. Motor de Filtrado Espacial")
+        
+        # Inteligencia de Fechas
+        fecha_min, fecha_max, fecha_target = date.today(), date.today(), date.today()
+        if not df_c.empty and 'FECHA_STD' in df_c.columns:
+            fecha_min, fecha_max = df_c['FECHA_STD'].min(), df_c['FECHA_STD'].max()
+            fecha_target = date.today() if fecha_min <= date.today() <= fecha_max else fecha_max
+
+        metodo = st.sidebar.selectbox(
+            "Segmentador Cronológico:", 
+            ["Turno Smart (Última Operación)", "Día Específico", "Rango Continuo", "Mes Histórico"]
+        )
+        
+        f_ini, f_fin = fecha_target, fecha_target
+        p_ano, p_mes, p_sem = 0, 0, 0
+
+        if metodo == "Turno Smart (Última Operación)":
+            f_ini = f_fin = fecha_target
+            st.sidebar.info(f"Auto-alineado a: {fecha_target}")
+        elif metodo == "Día Específico":
+            f_ini = f_fin = st.sidebar.date_input("Día Base:", value=fecha_target, min_value=fecha_min, max_value=fecha_max)
+        elif metodo == "Rango Continuo":
+            rango = st.sidebar.date_input("Límites Temporales:", [fecha_min, fecha_max], min_value=fecha_min, max_value=fecha_max)
+            if len(rango) == 2: f_ini, f_fin = rango[0], rango[1]
+        elif metodo == "Mes Histórico" and 'AÑO' in df_c.columns and 'MES' in df_c.columns:
+            p_ano = st.sidebar.selectbox("Año Base", sorted(df_c['AÑO'].dropna().unique(), reverse=True))
+            p_mes = st.sidebar.selectbox("Mes Base", sorted(df_c[df_c['AÑO']==p_ano]['MES'].dropna().unique()))
+
+        # Extracción de Turnos Dinámicos
+        t_sel = []
+        c_turno = DataProcessor.ubicar_columna(df_c, ['TURNO', 'SHIFT'])
+        if c_turno:
+            turnos_disp = df_c[c_turno].dropna().unique().tolist()
+            if turnos_disp:
+                t_sel = st.sidebar.multiselect("Filtro de Turnos:", turnos_disp, default=turnos_disp)
+
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 🎯 3. Control de Objetivos Base")
+        meta = st.sidebar.number_input("Benchmark OEE (%)", value=EnterpriseConfig.Operaciones.META_OEE_DEFAULT, step=1.0)
+
+        # Aplicación matemática de filtros
+        df_c_f = RuleEngine.aplicar_reglas_tiempo(df_c, f_ini, f_fin, metodo, p_ano, p_mes, p_sem, t_sel)
+        df_p_f = RuleEngine.aplicar_reglas_tiempo(df_p, f_ini, f_fin, metodo, p_ano, p_mes, p_sem, t_sel)
+        df_d_f = RuleEngine.aplicar_reglas_tiempo(df_d, f_ini, f_fin, metodo, p_ano, p_mes, p_sem, t_sel)
+
+        self.contexto_fecha = str(f_ini) if f_ini == f_fin else f"{f_ini} -> {f_fin}"
+        self.contexto_turno = ", ".join([str(t) for t in t_sel]) if t_sel else "Turnos Consolidados"
+
+        return meta, df_c_f, df_p_f, df_d_f
+
+    def despachar_pdf(self, meta: float):
+        """Ensambla el PDF A4 utilizando dibujado FPDF nativo y despacha por Telegram."""
+        with st.spinner("Construyendo binario PDF A4 Institucional. Compilando tablas nativas..."):
+            try:
+                pdf = EnterprisePDFEngine(self.contexto_fecha, self.contexto_turno)
+                pdf.render_portada_oficial()
                 
-                # Despliegue de botón de Rescate / Descarga Física
-                with open(pdf_path, "rb") as pdf_file:
+                hallazgos = ExpertDiagnostics.evaluar_performance(self.metricas_vivas, meta)
+                pdf.ensamblar_cuerpo_tecnico(self.metricas_vivas, self.metricas_vivas['Data_Pareto'], hallazgos)
+                
+                nombre_archivo = f"CAVA_OEE_{EnterpriseConfig.Operaciones.ID_MAQUINA}_{datetime.now().strftime('%Y%m%d%H%M')}.pdf"
+                ruta_pdf = os.path.join(EnterpriseConfig.Rutas.TEMP, nombre_archivo)
+                pdf.output(ruta_pdf)
+                
+                # Despacho Telegram
+                exito = CommGateway.transmitir_pdf_gerencial(ruta_pdf, self.metricas_vivas, self.contexto_fecha)
+                if exito:
+                    st.success("✅ Certificado Operativo: Documento vectorizado en A4 y distribuido exitosamente a la Gerencia.")
+                else:
+                    st.warning("⚠️ El PDF fue generado localmente, pero el protocolo de red hacia los servidores externos falló.")
+                
+                # Descarga Local Failsafe
+                with open(ruta_pdf, "rb") as bf:
                     st.download_button(
-                        label="💾 Descargar Respaldo Físico del Reporte PDF (A4)",
-                        data=pdf_file,
-                        file_name=pdf_filename,
+                        label="💾 Descargar Copia Física (PDF)",
+                        data=bf,
+                        file_name=nombre_archivo,
                         mime="application/pdf"
                     )
-                    
             except Exception as e:
-                LogManager.error(f"Falla masiva en generador FPDF: {e}")
-                st.error(f"El Reporte PDF colapsó al estructurarse: {e}")
+                EnterpriseLogger.error("Colapso en generador PDF", exc_info=True)
+                st.error(f"Fallo estructural del procesador de documentos: {e}")
 
-    def start_kernel(self):
-        """Inicializador de Arranque del Dashboard (Main Boot Sequence)."""
-        self.render_sidebar_ingestion()
+    def iniciar(self):
+        """Punto de entrada de ejecución del Framework Streamlit."""
+        inject_corporate_css()
+        self.renderizar_bloque_ingesta()
         
-        if not self.data_dict:
-            st.info("👈 Señor, la plataforma está a la escucha. Arrastre la Matriz Excel de Planta (LURIN CAPS OEE) al panel izquierdo para inyectar los datos.")
-            st.title(f"📊 Sistema Operativo Central (OEE) - {AppConfig.MAQUINA_NOMBRE}")
-            
-            with st.expander("📖 Asistente Interactivo de Inicialización", expanded=True):
-                st.markdown("""
-                **Bienvenido al entorno analítico corporativo CAVA Robotics.**
-                
-                El motor ha sido configurado para cargar automáticamente los incidentes del **Día de Hoy**.
-                1. Al arrojar el Excel, el *Smart Default* se anclará a la última fecha productiva válida.
-                2. Si ocurrieron fallas, las visualizará cronológicamente en el diagrama tipo Gantt de *Línea de Vida*.
-                3. Al pulsar 'Exportar', todo será vectorizado en un Documento PDF y enviado sin requerir intervención extra.
-                """)
+        if not self.memoria_db:
+            st.markdown(f"""
+            <div class="gerencia-header" style="margin-top:20px;">
+                <h4>⚙️ Centro de Operaciones OEE - Unidad Lurin (Activo {EnterpriseConfig.Operaciones.ID_MAQUINA})</h4>
+                <p>El sistema se encuentra en estado de hibernación esperando telemetría.</p>
+                <p><strong>Instrucción:</strong> Inserte la matriz Excel maestra o especifique el directorio de la unidad de red compartida en el panel lateral izquierdo para iniciar la orquestación de datos.</p>
+            </div>
+            """, unsafe_allow_html=True)
             return
-            
-        target_oee, df_caps_f = self.render_sidebar_filters()
+
+        meta_oee, df_caps, df_prod, df_paradas = self.renderizar_motor_filtros()
         
-        st.title("📊 Panel Gerencial Corporativo (Dashboard OEE)")
+        # Ejecutar Lógica de Negocio
+        self.metricas_vivas = BusinessLogic.consolidar_kpis(df_caps, df_prod, df_paradas)
+        
         st.markdown(f"""
-            <div class="info-box">
-                <h4><span style="font-size: 1.3em;">⚙️</span> Identificador de Activo: {AppConfig.MAQUINA_NOMBRE} (Línea {AppConfig.MAQUINA_ID})</h4>
-                <p>
-                    <strong>Alcance Dinámico:</strong> {self.ctx_str} &nbsp;|&nbsp;
-                    <strong>Turno de Trabajo:</strong> {self.str_turnos} &nbsp;|&nbsp;
-                    <strong>Velocidad de Planta:</strong> {AppConfig.PRODUCCION_NOMINAL_HORA:,.0f} placas/hora
-                </p>
+            <div class="gerencia-header">
+                <h4>📊 Panel Ejecutivo Consolidado: {EnterpriseConfig.Operaciones.NOMBRE_EQUIPO}</h4>
+                <p><strong>Alcance Espacial:</strong> {self.contexto_fecha} &nbsp;|&nbsp; <strong>Config. Turnos:</strong> {self.contexto_turno}</p>
             </div>
         """, unsafe_allow_html=True)
 
-        # -------------------------------------------------------------
-        # SISTEMA DE PESTAÑAS (TABS) MODERNOS
-        # -------------------------------------------------------------
-        tab1, tab2 = st.tabs([
-            "📋 MÓDULO 1: Dashboard Ejecutivo (Resumen)", 
-            "📈 MÓDULO 2: Análisis Científico y Pareto Extendido"
-        ])
+        # =====================================================================
+        # DISEÑO DE UI ULTRA-RÁPIDO (CERO LATENCIA, SIN COMPONENTES PESADOS)
+        # =====================================================================
+        st.markdown("### 1. Cuadro de Mando Integral y KPIs Core (Rendimiento Instantáneo)")
         
-        with tab1:
-            self.render_tab_executive_dashboard(target_oee, df_caps_f)
-            
-        with tab2:
-            self.render_tab_deep_analytics()
+        # Fila 1: Indicadores Core
+        col1, col2, col3, col4 = st.columns(4)
+        oee_val = self.metricas_vivas['OEE']
+        c_oee = EnterpriseConfig.UIColors.SUCCESS if oee_val >= meta_oee else EnterpriseConfig.UIColors.DANGER
+        
+        col1.markdown(f"<div class='fast-metric-card'><div class='fast-metric-title'>OEE Global</div><div class='fast-metric-value' style='color:{c_oee};'>{oee_val:.1f}%</div><div class='fast-metric-subtitle'>Meta: {meta_oee}%</div></div>", unsafe_allow_html=True)
+        col2.markdown(f"<div class='fast-metric-card'><div class='fast-metric-title'>Disponibilidad</div><div class='fast-metric-value' style='color:{EnterpriseConfig.UIColors.PRIMARY};'>{self.metricas_vivas['Disponibilidad']:.1f}%</div><div class='fast-metric-subtitle'>Tiempo Operativo Real</div></div>", unsafe_allow_html=True)
+        col3.markdown(f"<div class='fast-metric-card'><div class='fast-metric-title'>Rendimiento</div><div class='fast-metric-value' style='color:{EnterpriseConfig.UIColors.PRIMARY};'>{self.metricas_vivas['Rendimiento']:.1f}%</div><div class='fast-metric-subtitle'>Velocidad / Microparadas</div></div>", unsafe_allow_html=True)
+        col4.markdown(f"<div class='fast-metric-card'><div class='fast-metric-title'>Calidad (FTT)</div><div class='fast-metric-value' style='color:{EnterpriseConfig.UIColors.SUCCESS};'>{self.metricas_vivas['Calidad']:.1f}%</div><div class='fast-metric-subtitle'>Primer Paso Correcto</div></div>", unsafe_allow_html=True)
 
-        # -------------------------------------------------------------
-        # DESPACHO PDF E INTERFAZ DE EXPORTACIÓN
-        # -------------------------------------------------------------
+        # Fila 2: Volumetría Física
+        col_v1, col_v2, col_v3 = st.columns(3)
+        col_v1.markdown(f"<div class='fast-metric-card'><div class='fast-metric-title'>Producción Neta Aprobada</div><div class='fast-metric-value' style='color:{EnterpriseConfig.UIColors.SECONDARY};'>{self.metricas_vivas['Prod_Conforme']:,.0f}</div><div class='fast-metric-subtitle'>Unidades Liberadas (QA Pass)</div></div>", unsafe_allow_html=True)
+        col_v2.markdown(f"<div class='fast-metric-card'><div class='fast-metric-title'>Rechazo Total (Chatarra)</div><div class='fast-metric-value' style='color:{EnterpriseConfig.UIColors.DANGER};'>{self.metricas_vivas['Prod_No_Conforme']:,.0f}</div><div class='fast-metric-subtitle'>Volumen No Conforme Definitivo</div></div>", unsafe_allow_html=True)
+        col_v3.markdown(f"<div class='fast-metric-card'><div class='fast-metric-title'>Muestras Retiradas QA</div><div class='fast-metric-value' style='color:{EnterpriseConfig.UIColors.MUTED};'>{self.metricas_vivas['Muestras_Calidad']:,.0f}</div><div class='fast-metric-subtitle'>Uso en Laboratorio / Ensayos</div></div>", unsafe_allow_html=True)
+
         st.markdown("---")
-        st.markdown("### 📤 CAVA Bot: Despacho Automatizado de Análisis")
-        _, col_btn, _ = st.columns([1,2,1])
-        with col_btn:
-            if st.button("📄 Generar Informe Ejecutivo en Alta Resolución y Despachar vía CAVA Bot"):
-                self.trigger_pdf_pipeline()
+        
+        tab_graficas, tab_tablas = st.tabs(["📉 Visualización Espacial Vectorial", "🗄️ Auditoría de Tablas Consolidadas"])
+        
+        with tab_graficas:
+            col_izq, col_der = st.columns([1, 1])
+            with col_izq:
+                st.markdown("#### Línea de Vida Cronológica del Turno")
+                st.plotly_chart(VectorEngine.renderizar_linea_vida(self.metricas_vivas['Data_Timeline']), use_container_width=True)
+            with col_der:
+                st.markdown("#### Distribución Pareto: Impacto Físico de Fallas")
+                st.plotly_chart(VectorEngine.renderizar_pareto_barras(self.metricas_vivas['Data_Pareto']), use_container_width=True)
+                
+        with tab_tablas:
+            c_tb1, c_tb2 = st.columns(2)
+            with c_tb1:
+                st.markdown("#### Log de Paradas de Máquina (Auditoría Técnica)")
+                if not self.metricas_vivas['Data_Pareto'].empty:
+                    st.dataframe(self.metricas_vivas['Data_Pareto'].style.format({"Impacto_Minutos": "{:.1f} m"}).background_gradient(subset=["Impacto_Minutos"], cmap='Reds'), use_container_width=True, hide_index=True)
+                else:
+                    st.success("No hay registros de paradas en el vector de tiempo analizado.")
+            with c_tb2:
+                st.markdown("#### Trazabilidad de Responsabilidad por Operador")
+                ops_df = self.metricas_vivas['Operadores']
+                if isinstance(ops_df, pd.DataFrame) and not ops_df.empty:
+                    col_val = ops_df.columns[1]
+                    st.dataframe(ops_df.style.format({col_val: "{:,.0f} u"}).background_gradient(subset=[col_val], cmap='Blues'), use_container_width=True, hide_index=True)
+                else:
+                    st.info("No se ha registrado segregación por operador en el formato origen.")
 
-# ==================================================================================================
-# EJECUCIÓN DEL KERNEL CAVA (INICIO DEL PROGRAMA)
-# ==================================================================================================
+        st.markdown("---")
+        st.markdown("### 📤 CAVA Dispatcher: Sistema de Despacho Documental")
+        _, central_btn, _ = st.columns([1, 2, 1])
+        with central_btn:
+            if st.button("📄 Consolidar Reporte Gerencial A4 y Despachar a Red Corporativa"):
+                self.despachar_pdf(meta_oee)
+
+
 if __name__ == "__main__":
-    app_kernel = DashboardUI()
-    app_kernel.start_kernel()
+    try:
+        kernel = MainKernelUI()
+        kernel.iniciar()
+    except Exception as exc_critica:
+        EnterpriseLogger.error("Caída total de Kernel detectada en runtime.", exc_info=True)
+        st.error(f"Fallo del Servidor Interno. Notifique al departamento TI: {exc_critica}")
