@@ -3,7 +3,7 @@
 SISTEMA GERENCIAL DE EFICIENCIA OPERATIVA (OEE) Y ANALÍTICA DE PRODUCCIÓN
 Cliente / Área: Producción - Carga de Detonadores (Máquina 219)
 Empresa: CAVA ROBOTICS
-Versión: 7.0.0 (Build Institucional Definitivo - Arquitectura Empresarial Avanzada)
+Versión: 7.1.0 (Build Filtros Granulares de Paradas - Módulo 2 Pareto Extendido)
 
 Módulos Integrados:
     1. CoreLogger: Trazabilidad, auditoría y manejo de excepciones silenciosas.
@@ -14,7 +14,7 @@ Módulos Integrados:
     6. PDFManager: Generador FPDF A4 Multisección (Portada, Resumen, Tablas, Gráficos de Alta Fidelidad).
     7. ExcelExporter: Exportador de data purificada para respaldos locales y auditorías.
     8. TelegramGateway: Capa de transmisión API segura con reintentos automáticos.
-    9. DashboardUI: Orquestador UI con Pestañas (Tabs) y Smart Defaults de Fecha Actual.
+    9. DashboardUI: Orquestador UI con Pestañas (Tabs), Smart Defaults y Filtros de Categoría/Causa.
 ====================================================================================================
 """
 
@@ -1170,6 +1170,12 @@ class DashboardUI:
         self.metricas = None
         self.ctx_str = ""
         self.str_turnos = ""
+        # =============================================================================
+        # NUEVOS ATRIBUTOS: Soportes para filtros granulares de Categoría y Causa (Módulo 2)
+        # =============================================================================
+        self.df_paradas_master = pd.DataFrame()
+        self.filtro_categorias = []
+        self.filtro_causas = []
 
     def render_cava_logo_native(self):
         """
@@ -1226,7 +1232,7 @@ class DashboardUI:
                         st.error("Dependencias físicas de SharePoint no habilitadas en el Kernel.")
 
     def render_sidebar_filters(self):
-        """Controlador de flujo de Fechas, Turnos y Targets."""
+        """Controlador de flujo de Fechas, Turnos, Targets y Filtros de Paradas."""
         if not self.data_dict: return None
 
         df_caps = self.data_dict.get('CAPS', pd.DataFrame())
@@ -1292,6 +1298,44 @@ class DashboardUI:
 
         self.metricas = BusinessLogic.calcular_metricas(df_caps_f, df_prod_f, df_par_f)
         
+        # =============================================================================
+        # NUEVA SECCIÓN: FILTROS GRANULARES DE CATEGORÍA Y CAUSA PARA MÓDULO 2
+        # =============================================================================
+        # Conservamos el DataFrame maestro de paradas (ya filtrado por tiempo/turno) para
+        # permitir un filtrado adicional por Categoría y Causa en el Análisis Científico Extendido.
+        self.df_paradas_master = df_par_f.copy()
+
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("## 🔍 4. Filtros de Análisis de Paradas (Módulo 2)")
+        st.sidebar.caption("Aplican exclusivamente al 'Análisis Científico y Pareto Extendido'.")
+
+        col_category = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['CATEGORY', 'CATEGORIA'])
+        col_cause = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['CAUSE', 'CAUSA', 'MOTIVO'])
+
+        if col_category:
+            categorias_unicas = sorted(self.df_paradas_master[col_category].dropna().unique().tolist())
+            self.filtro_categorias = st.sidebar.multiselect(
+                "🗂️  Filtrar por Categoría", 
+                options=categorias_unicas, 
+                default=categorias_unicas,
+                help="Segmente el análisis Pareto por categoría de evento."
+            )
+        else:
+            self.filtro_categorias = []
+            st.sidebar.info("Columna 'Category' no detectada en la matriz de paradas.")
+
+        if col_cause:
+            causas_unicas = sorted(self.df_paradas_master[col_cause].dropna().unique().tolist())
+            self.filtro_causas = st.sidebar.multiselect(
+                "🔎  Filtrar por Causa Específica", 
+                options=causas_unicas, 
+                default=causas_unicas,
+                help="Profundice en causas raíz específicas dentro del Pareto."
+            )
+        else:
+            self.filtro_causas = []
+            st.sidebar.info("Columna 'Cause' no detectada en la matriz de paradas.")
+
         # Persistencia de Metadata para Títulos y PDFs
         if filtro_tipo in ["Turno de Hoy (Smart)", "Día Exacto"]:
             self.ctx_str = f"{f_inicio}"
@@ -1370,24 +1414,69 @@ class DashboardUI:
         """
         [PESTAÑA 2: ANÁLISIS PROFUNDO]
         Despliega el estudio exhaustivo de Pareto sin límites de Top 10, y traza estadísticas duras.
+        Ahora incorpora filtros dinámicos de Categoría y Causa desde el panel lateral.
         """
         st.markdown("### 📈 Laboratorio de Análisis Profundo de Incidentes (Pareto Maestro)")
-        st.write("Esta sección rompe el filtro del Top 10 y grafica la totalidad de los incidentes que mermaron la disponibilidad, aplicando la ley matemática del 80/20.")
+        st.write("Esta sección rompe el filtro del Top 10 y grafica la totalidad de los incidentes que mermaron la disponibilidad, aplicando la ley matemática del 80/20. Utilice los filtros de Categoría y Causa en el panel lateral para segmentar el análisis.")
+
+        # =============================================================================
+        # MOTOR DE FILTRADO DINÁMICO POR CATEGORÍA Y CAUSA (MÓDULO 2)
+        # =============================================================================
+        df_full = pd.DataFrame()
         
-        df_full = self.metricas.get('Data_Pareto_Total', pd.DataFrame())
-        
+        if hasattr(self, 'df_paradas_master') and not self.df_paradas_master.empty:
+            df_par = self.df_paradas_master.copy()
+            
+            # Localización robusta de columnas de clasificación
+            col_category = DataProcessor.find_column_exact_or_partial(df_par, ['CATEGORY', 'CATEGORIA'])
+            col_cause = DataProcessor.find_column_exact_or_partial(df_par, ['CAUSE', 'CAUSA', 'MOTIVO'])
+            col_min = DataProcessor.find_column_exact_or_partial(df_par, ['PARADAS (MINUTOS)', 'MINUTOS'])
+            col_desc = DataProcessor.find_column_exact_or_partial(df_par, ['DESCRIPCIÓN ESPECIFICA', 'DESCRIPCION ESPECIFICA', 'MOTIVO DE PARADA', 'FALLA'])
+            
+            # Aplicación de máscaras condicionales desde el sidebar
+            if col_category and hasattr(self, 'filtro_categorias') and self.filtro_categorias:
+                df_par = df_par[df_par[col_category].isin(self.filtro_categorias)]
+                
+            if col_cause and hasattr(self, 'filtro_causas') and self.filtro_causas:
+                df_par = df_par[df_par[col_cause].isin(self.filtro_causas)]
+            
+            # Recálculo clínico del Pareto Maestro con los filtros aplicados
+            if col_min and col_desc:
+                df_par[col_min] = DataProcessor.safe_numeric_conversion(df_par[col_min])
+                df_full = df_par.groupby(col_desc)[col_min].sum().reset_index()
+                df_full = df_full.sort_values(by=col_min, ascending=False)
+                df_full.rename(columns={col_desc: 'Descripcion', col_min: 'Minutos'}, inplace=True)
+            else:
+                # Fallback al Pareto total pre-calculado si no se pueden aplicar filtros granulares
+                df_full = self.metricas.get('Data_Pareto_Total', pd.DataFrame()).copy()
+        else:
+            # Fallback si no hay DataFrame maestro disponible
+            df_full = self.metricas.get('Data_Pareto_Total', pd.DataFrame()).copy()
+
         if df_full.empty:
-            st.success("Operación a régimen óptimo. El sistema no ha capturado fallos mecánicos ni eléctricos en la matriz clínica.")
+            st.success("Operación a régimen óptimo. El sistema no ha capturado fallos mecánicos ni eléctricos en la matriz clínica para los filtros seleccionados.")
             return
             
-        # Motor Avanzado
+        # =============================================================================
+        # VISUALIZACIÓN ESPECTRAL DE PARETO (80/20)
+        # =============================================================================
         self.fig_pareto_adv = PlotlyEngine.create_pareto_advanced(df_full)
         st.plotly_chart(self.fig_pareto_adv, width="stretch")
         
-        # Despliegue Crudo de Data
+        # =============================================================================
+        # DESPLIEGUE CRUDO DE DATA CON ACUMULADO NUMÉRICO
+        # =============================================================================
         st.markdown("#### Matriz Descriptiva de Acumulación Numérica")
+        df_display = df_full.copy()
+        if not df_display.empty and 'Minutos' in df_display.columns:
+            total_min = df_display['Minutos'].sum()
+            if total_min > 0:
+                df_display['Acumulado %'] = (df_display['Minutos'].cumsum() / total_min) * 100
+            else:
+                df_display['Acumulado %'] = 0.0
+        
         st.dataframe(
-            df_full.style.format({'Minutos': '{:.1f} m', 'Acumulado %': '{:.2f}%'}),
+            df_display.style.format({'Minutos': '{:.1f} m', 'Acumulado %': '{:.2f}%'}),
             width="stretch", hide_index=True
         )
 
