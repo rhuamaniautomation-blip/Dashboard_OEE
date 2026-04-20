@@ -359,14 +359,15 @@ class DataProcessor:
             df_raw = excel_file.parse(sheet_name, header=None, nrows=35)
             
             for idx, row in df_raw.iterrows():
-                row_str = row.astype(str).str.strip().str.upper()
-                
                 # Exigencia estricta: Debemos encontrar las palabras exactas en la fila
                 match_count = 0
                 for kw in keywords:
-                    for val in row_str.values:
+                    kw_upper = str(kw).upper()
+                    for val in row.values:
+                        # Conversión explícita a string para blindar el entorno de tipo float (NaN)
+                        val_str = str(val).strip().upper()
                         # Búsqueda exacta y tolerante a espacios adyacentes
-                        if kw == val or f"{kw} " in val or f" {kw}" in val:
+                        if kw_upper == val_str or f"{kw_upper} " in val_str or f" {kw_upper}" in val_str:
                             match_count += 1
                             break # No contar la misma palabra dos veces
                 
@@ -1330,9 +1331,9 @@ class DashboardUI:
         self.fig_rend = PlotlyEngine.create_gauge(self.metricas['Rendimiento'], "Factor Rendimiento (P)", 95.0, "#C07F00")
         self.fig_cal  = PlotlyEngine.create_gauge(self.metricas['Calidad'], "Factor Calidad Global (Q)", 99.0, "#2E8B57")
         
-        with g1: st.plotly_chart(self.fig_disp, use_container_width=True)
-        with g2: st.plotly_chart(self.fig_rend, use_container_width=True)
-        with g3: st.plotly_chart(self.fig_cal, use_container_width=True)
+        with g1: st.plotly_chart(self.fig_disp, width="stretch")
+        with g2: st.plotly_chart(self.fig_rend, width="stretch")
+        with g3: st.plotly_chart(self.fig_cal, width="stretch")
 
         # -------------------------------------------------------------
         # LÍNEA DE VIDA DEL EQUIPO (TIMELINE)
@@ -1340,7 +1341,7 @@ class DashboardUI:
         st.markdown("---")
         st.markdown("### 3. Trazabilidad de Estados: Línea de Vida de la Máquina en el Turno")
         self.fig_timeline = PlotlyEngine.create_timeline_gantt(self.metricas['Data_Timeline'])
-        st.plotly_chart(self.fig_timeline, use_container_width=True)
+        st.plotly_chart(self.fig_timeline, width="stretch")
 
         # -------------------------------------------------------------
         # RESPONSABILIDADES Y TOP 10 (INTACTO)
@@ -1351,17 +1352,17 @@ class DashboardUI:
         with col_izq:
             st.markdown("### 4. Matriz Pareto Crítica: Top 10 Detractores Operativos (Resumen)")
             self.fig_bar = PlotlyEngine.create_pareto_bar(self.metricas['Top_Paradas'])
-            st.plotly_chart(self.fig_bar, use_container_width=True)
+            st.plotly_chart(self.fig_bar, width="stretch")
             
         with col_der:
             st.markdown("### 5. Responsabilidad Volumétrica por Operador")
             if 'Data_Operadores' in self.metricas and not self.metricas['Data_Operadores'].empty:
                 self.fig_pie = PlotlyEngine.create_operator_pie(self.metricas['Data_Operadores'])
-                st.plotly_chart(self.fig_pie, use_container_width=True)
+                st.plotly_chart(self.fig_pie, width="stretch")
                 
                 # Respaldo Tabular Físico
                 st.markdown("**Matriz Auditiva de Volumen por Colaborador:**")
-                st.dataframe(self.metricas['Data_Operadores'].style.format({self.metricas['Data_Operadores'].columns[1]: "{:,.0f}"}), use_container_width=True, hide_index=True)
+                st.dataframe(self.metricas['Data_Operadores'].style.format({self.metricas['Data_Operadores'].columns[1]: "{:,.0f}"}), width="stretch", hide_index=True)
             else:
                 st.info("La matriz no contiene registros válidos de responsables de operación para este periodo.")
 
@@ -1381,14 +1382,13 @@ class DashboardUI:
             
         # Motor Avanzado
         self.fig_pareto_adv = PlotlyEngine.create_pareto_advanced(df_full)
-        st.plotly_chart(self.fig_pareto_adv, use_container_width=True)
+        st.plotly_chart(self.fig_pareto_adv, width="stretch")
         
         # Despliegue Crudo de Data
         st.markdown("#### Matriz Descriptiva de Acumulación Numérica")
         st.dataframe(
-            df_full.style.format({'Minutos': '{:.1f} m', 'Acumulado %': '{:.2f}%'})
-            .background_gradient(subset=['Minutos'], cmap='Reds'),
-            use_container_width=True, hide_index=True
+            df_full.style.format({'Minutos': '{:.1f} m', 'Acumulado %': '{:.2f}%'}),
+            width="stretch", hide_index=True
         )
 
     def trigger_pdf_pipeline(self):
