@@ -3,7 +3,7 @@
 SISTEMA GERENCIAL DE EFICIENCIA OPERATIVA (OEE) Y ANALÍTICA DE PRODUCCIÓN
 Cliente / Área: Producción - Carga de Detonadores (Máquina 219)
 Empresa: CAVA ROBOTICS
-Versión: 7.1.1 (Build Filtros Granulares de Paradas - Módulo 2 Pareto Extendido + COD/Sistemas)
+Versión: 7.2.0 (Build Pareto Dinámico por Dimensión + Drill-Down Interactivo)
 
 Módulos Integrados:
     1. CoreLogger: Trazabilidad, auditoría y manejo de excepciones silenciosas.
@@ -973,10 +973,16 @@ class PlotlyEngine:
         return fig
 
     @staticmethod
-    def create_pareto_advanced(df_full):
+    def create_pareto_advanced(df_full, x_label="Descripcion", title="Análisis Espectral de Fallas (Curva de Pareto 80/20 Acumulada)"):
         """
         [PANTALLA DE ANÁLISIS PROFUNDO]
         Gráfica Pareto Corporativa combinada (Barras + Línea Acumulada 80/20) para el nuevo Tab analítico.
+        Ahora soporta eje X dinámico según la dimensión de análisis seleccionada por el usuario.
+
+        Args:
+            df_full: DataFrame con las columnas de agrupación y minutos.
+            x_label: Nombre de la columna que se usará como eje X (categoría).
+            title: Título dinámico del gráfico.
         """
         if df_full.empty: return go.Figure()
 
@@ -986,19 +992,19 @@ class PlotlyEngine:
         fig = go.Figure()
         # Capa 1: Barras Físicas
         fig.add_trace(go.Bar(
-            x=df['Descripcion'], y=df['Minutos'], 
+            x=df[x_label], y=df['Minutos'], 
             name='Impacto (Minutos)', marker_color='#C07F00',
             text=df['Minutos'].round(1), textposition='outside'
         ))
         # Capa 2: Línea Acumulada Porcentual (Principio de Pareto)
         fig.add_trace(go.Scatter(
-            x=df['Descripcion'], y=df['Acumulado %'], 
+            x=df[x_label], y=df['Acumulado %'], 
             name='Acumulado %', yaxis='y2', 
             mode='lines+markers', marker=dict(color='#0A2540', size=8), line=dict(width=3)
         ))
 
         fig.update_layout(
-            title="Análisis Espectral de Fallas (Curva de Pareto 80/20 Acumulada)",
+            title=title,
             template="simple_white", height=550,
             yaxis=dict(title='Minutos Netos de Impacto', showgrid=True, gridcolor='#F0F0F0'),
             yaxis2=dict(title='Acumulado Frecuencial (%)', overlaying='y', side='right', range=[0, 105], showgrid=False),
@@ -1553,7 +1559,9 @@ class DashboardUI:
         """
         [PESTAÑA 2: ANÁLISIS PROFUNDO]
         Despliega el estudio exhaustivo de Pareto sin límites de Top 10, y traza estadísticas duras.
-        Ahora incorpora filtros dinámicos de Categoría, Causa, COD y Sistemas desde el panel lateral.
+        Ahora incorpora:
+          1. Eje X dinámico según dimensión seleccionada (COD, Sistemas, Causa, Descripción).
+          2. Drill-down interactivo: al hacer clic en una barra se despliega el detalle crudo completo.
         """
         st.markdown("### 📈 Laboratorio de Análisis Profundo de Incidentes (Pareto Maestro)")
         st.write("Esta sección rompe el filtro del Top 10 y grafica la totalidad de los incidentes que mermaron la disponibilidad, aplicando la ley matemática del 80/20. Utilice los filtros de Categoría, Causa, COD y Sistemas en el panel lateral para segmentar el análisis.")
@@ -1562,6 +1570,7 @@ class DashboardUI:
         # MOTOR DE FILTRADO DINÁMICO POR CATEGORÍA, CAUSA, COD Y SISTEMAS (MÓDULO 2)
         # =============================================================================
         df_full = pd.DataFrame()
+        df_par = pd.DataFrame()
 
         if hasattr(self, 'df_paradas_master') and not self.df_paradas_master.empty:
             df_par = self.df_paradas_master.copy()
@@ -1588,12 +1597,45 @@ class DashboardUI:
             if col_sistemas and hasattr(self, 'filtro_sistemas') and self.filtro_sistemas:
                 df_par = df_par[df_par[col_sistemas].isin(self.filtro_sistemas)]
 
-            # Recálculo clínico del Pareto Maestro con los filtros aplicados
-            if col_min and col_desc:
+            # =============================================================================
+            # SELECTOR DE DIMENSIÓN DEL EJE X (PARETO DINÁMICO)
+            # =============================================================================
+            # Construimos dinámicamente las opciones disponibles según las columnas detectadas
+            opciones_dimension = []
+            mapeo_dimension = {}
+
+            if col_desc:
+                opciones_dimension.append("Descripción Específica")
+                mapeo_dimension["Descripción Específica"] = col_desc
+            if col_cod:
+                opciones_dimension.append("COD")
+                mapeo_dimension["COD"] = col_cod
+            if col_sistemas:
+                opciones_dimension.append("Sistemas")
+                mapeo_dimension["Sistemas"] = col_sistemas
+            if col_cause:
+                opciones_dimension.append("Causa Específica")
+                mapeo_dimension["Causa Específica"] = col_cause
+
+            dim_seleccionada = "Descripción Específica"
+            if opciones_dimension:
+                dim_seleccionada = st.radio(
+                    "📐 Dimensión de Análisis del Eje X (Pareto):",
+                    options=opciones_dimension,
+                    horizontal=True,
+                    help="Seleccione la dimensión por la cual desea agrupar y visualizar el Pareto."
+                )
+
+            # La columna real del DataFrame que se usará para agrupar
+            group_col = mapeo_dimension.get(dim_seleccionada, col_desc)
+
+            # Recálculo clínico del Pareto Maestro con la dimensión seleccionada
+            if col_min and group_col:
                 df_par[col_min] = DataProcessor.safe_numeric_conversion(df_par[col_min])
-                df_full = df_par.groupby(col_desc)[col_min].sum().reset_index()
+                df_full = df_par.groupby(group_col)[col_min].sum().reset_index()
                 df_full = df_full.sort_values(by=col_min, ascending=False)
-                df_full.rename(columns={col_desc: 'Descripcion', col_min: 'Minutos'}, inplace=True)
+                # Renombramos a nombres estándar para compatibilidad con el motor gráfico
+                df_full.rename(columns={group_col: 'Descripcion', col_min: 'Minutos'}, inplace=True)
             else:
                 # Fallback al Pareto total pre-calculado si no se pueden aplicar filtros granulares
                 df_full = self.metricas.get('Data_Pareto_Total', pd.DataFrame()).copy()
@@ -1606,14 +1648,72 @@ class DashboardUI:
             return
 
         # =============================================================================
-        # VISUALIZACIÓN ESPECTRAL DE PARETO (80/20)
+        # VISUALIZACIÓN ESPECTRAL DE PARETO (80/20) CON EJE X DINÁMICO
         # =============================================================================
-        self.fig_pareto_adv = PlotlyEngine.create_pareto_advanced(df_full)
-        st.plotly_chart(self.fig_pareto_adv, width="stretch")
+        titulo_pareto = f"Análisis Espectral de Fallas por {dim_seleccionada} (Curva de Pareto 80/20 Acumulada)"
+        self.fig_pareto_adv = PlotlyEngine.create_pareto_advanced(df_full, x_label="Descripcion", title=titulo_pareto)
+
+        # Renderizamos el gráfico con capacidad de selección interactiva (drill-down)
+        pareto_event = st.plotly_chart(
+            self.fig_pareto_adv, 
+            key="pareto_adv_chart", 
+            on_select="rerun", 
+            selection_mode="points",
+            width="stretch"
+        )
+
+        # =============================================================================
+        # DRILL-DOWN INTERACTIVO: DETALLE DE BARRA SELECCIONADA
+        # =============================================================================
+        # Capturamos el evento de selección del gráfico para desplegar la información cruda
+        selected_label = None
+        if pareto_event and hasattr(pareto_event, 'selection') and pareto_event.selection:
+            points = pareto_event.selection.get('points', [])
+            if points:
+                # El valor 'x' del punto seleccionado corresponde a la etiqueta de la barra
+                selected_label = points[0].get('x')
+
+        # También ofrecemos un selectbox como respaldo alternativo de selección
+        st.markdown("---")
+        st.markdown("#### 🔍 Explorador de Detalle por Dimensión")
+        col_drill_1, col_drill_2 = st.columns([1, 2])
+
+        with col_drill_1:
+            seleccion_manual = st.selectbox(
+                "Seleccione un elemento del Pareto para ver detalle completo:",
+                options=["(Haga clic en el gráfico o seleccione aquí)"] + df_full['Descripcion'].tolist(),
+                index=0
+            )
+
+        # Priorizamos la selección del gráfico; si no hay, usamos el selectbox
+        item_a_drill = selected_label if selected_label else (seleccion_manual if seleccion_manual != "(Haga clic en el gráfico o seleccione aquí)" else None)
+
+        if item_a_drill and not df_par.empty and group_col:
+            with col_drill_2:
+                st.success(f"📌 Mostrando detalle crudo para: **{item_a_drill}**")
+
+            # Filtramos el DataFrame maestro (ya filtrado por tiempo/categoría/causa/cod/sistemas)
+            # para mostrar únicamente las filas que corresponden a la barra seleccionada
+            df_detalle = df_par[df_par[group_col] == item_a_drill].copy()
+
+            if not df_detalle.empty:
+                st.markdown(f"**Registros crudos encontrados: {len(df_detalle)} filas**")
+                # Limpiamos columnas internas de fecha para una visualización más limpia
+                cols_visibles = [c for c in df_detalle.columns if c not in ['FECHA_DATETIME', 'FECHA_STD', 'AÑO', 'MES', 'SEMANA', 'TIMELINE_START', 'TIMELINE_END', 'CATEGORIA_STD']]
+                if not cols_visibles:
+                    cols_visibles = df_detalle.columns.tolist()
+                st.dataframe(df_detalle[cols_visibles], use_container_width=True, hide_index=True)
+
+                # Métrica resumida del item seleccionado
+                total_min_sel = df_detalle[col_min].sum() if col_min else 0
+                st.info(f"⏱️ Minutos totales acumulados para **{item_a_drill}**: {total_min_sel:.1f} min")
+            else:
+                st.warning("No se encontraron registros crudos para el elemento seleccionado.")
 
         # =============================================================================
         # DESPLIEGUE CRUDO DE DATA CON ACUMULADO NUMÉRICO
         # =============================================================================
+        st.markdown("---")
         st.markdown("#### Matriz Descriptiva de Acumulación Numérica")
         df_display = df_full.copy()
         if not df_display.empty and 'Minutos' in df_display.columns:
