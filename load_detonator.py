@@ -3,7 +3,7 @@
 SISTEMA GERENCIAL DE EFICIENCIA OPERATIVA (OEE) Y ANALÍTICA DE PRODUCCIÓN
 Cliente / Área: Producción - Carga de Detonadores (Máquina 219)
 Empresa: CAVA ROBOTICS
-Versión: 7.2.0 (Build Filtros Granulares de Paradas - Módulo 2 Pareto Extendido + COD/Sistemas)
+Versión: 7.1.1 (Build Filtros Granulares de Paradas - Módulo 2 Pareto Extendido + COD/Sistemas)
 
 Módulos Integrados:
     1. CoreLogger: Trazabilidad, auditoría y manejo de excepciones silenciosas.
@@ -36,6 +36,7 @@ from datetime import datetime, timedelta, date
 # 1. SUPRESIÓN DE ADVERTENCIAS Y CONFIGURACIÓN DE ENTORNO
 # --------------------------------------------------------------------------------------------------
 # Mantenemos la terminal limpia de alertas generadas por librerías de terceros (openpyxl, dateutil)
+# Esto garantiza una experiencia de usuario limpia y profesional sin ruido en la consola.
 warnings.filterwarnings("ignore", category=UserWarning, module="openpyxl")
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
 warnings.filterwarnings("ignore", message=".*Could not infer format.*")
@@ -61,6 +62,8 @@ st.set_page_config(
 )
 
 # Inyección de CSS Avanzado: Estética gerencial, colores cálidos, tipografía institucional corporativa
+# Se utiliza un sistema de variables CSS para mantener consistencia visual en toda la aplicación.
+# Los colores institucionales de CAVA Robotics son el azul profundo (#0A2540) y el dorado/bronce (#C07F00).
 st.markdown("""
     <style>
     /* Variables de Tema Institucional CAVA Robotics */
@@ -278,10 +281,13 @@ st.markdown("""
 class AppConfig:
     """Contenedor estático para configuraciones empresariales y credenciales del sistema."""
     # Credenciales API Telegram (Entorno de Producción Segura)
+    # Estas credenciales son sensibles y deben manejarse con extrema precaución.
+    # En un entorno de producción real, deberían almacenarse en variables de entorno.
     TELEGRAM_TOKEN = "8552261657:AAFdXG5ta6UUPyrSco2tqgvNFTTH_LGZw9M"
     TELEGRAM_CHAT_ID = "6153139566"
 
     # Especificaciones Técnicas Constantes - Máquina 219
+    # Estos valores son críticos para el cálculo de la producción nominal y la capacidad teórica.
     MAQUINA_ID = "219"
     MAQUINA_NOMBRE = "Carga de Detonadores(219)"
     CAPACIDAD_PLACAS_HORA = 268
@@ -289,6 +295,7 @@ class AppConfig:
     PRODUCCION_NOMINAL_HORA = CAPACIDAD_PLACAS_HORA * DETONADORES_POR_PLACA # 10,720 det/hora
 
     # Directorios del Sistema para Almacenamiento Temporal de Exportaciones
+    # Se utilizan para almacenar reportes PDF, imágenes temporales y logs del sistema.
     TEMP_DIR = "temp_reports"
     LOGS_DIR = "system_logs"
 
@@ -304,6 +311,7 @@ class AppConfig:
             st.error(f"Fallo crítico al crear directorios de sistema: {e}")
 
 # Inicializar el entorno físico en el servidor local
+# Esta llamada asegura que los directorios necesarios existan antes de cualquier operación de I/O.
 AppConfig.initialize_environment()
 
 
@@ -314,6 +322,7 @@ class LogManager:
     """
     Sistema robusto de registro de eventos del sistema (Auditoría Gerencial).
     Escribe tanto en la terminal de ejecución como en un archivo físico de trazabilidad.
+    El formato de log incluye timestamp, nivel de severidad y prefijo institucional CAVA_CORE.
     """
     log_file_path = os.path.join(AppConfig.LOGS_DIR, f"cava_core_{datetime.now().strftime('%Y%m')}.log")
 
@@ -345,6 +354,7 @@ class DataProcessor:
     """
     Clase de grado empresarial para el procesamiento, limpieza, validación 
     y estandarización clínica de DataFrames provenientes de archivos Excel industriales.
+    Implementa algoritmos de búsqueda jerárquica y tolerancia a errores de formato.
     """
 
     @staticmethod
@@ -353,6 +363,14 @@ class DataProcessor:
         [MOTOR DE ESCANEO DE OFFSET]
         Analiza las primeras filas del Excel para identificar dónde comienzan realmente 
         las cabeceras, ignorando logos, espacios vacíos, metadatos o títulos de reporte.
+
+        Args:
+            excel_file: Objeto ExcelFile de pandas.
+            sheet_name: Nombre de la hoja a analizar.
+            keywords: Lista de palabras clave que deben aparecer en la fila de cabecera.
+
+        Returns:
+            int: Índice de la fila donde se encuentra la cabecera real.
         """
         try:
             # Leer las primeras 35 filas en crudo para ubicar la cabecera real
@@ -387,6 +405,12 @@ class DataProcessor:
         """
         Purifica las cabeceras eliminando espacios en blanco invisibles al inicio y final,
         y elimina saltos de línea (\n, \r) originados por exportaciones crudas de SCADA.
+
+        Args:
+            df: DataFrame de pandas con nombres de columna potencialmente sucios.
+
+        Returns:
+            DataFrame: Mismo DataFrame con nombres de columna limpios.
         """
         if df is not None and not df.empty:
             df.columns = df.columns.astype(str).str.strip().str.replace('\n', ' ').str.replace('\r', '')
@@ -398,6 +422,14 @@ class DataProcessor:
         Algoritmo de búsqueda jerárquica para ubicar columnas aunque cambien levemente de nombre:
         Fase 1: Busca coincidencia exacta (ignorando mayúsculas y espacios). Ej: "DATE"
         Fase 2: Si no encuentra exacta, busca coincidencia parcial. Ej: "FECHA DE CARGA"
+
+        Args:
+            df: DataFrame a inspeccionar.
+            keywords_exact: Lista de palabras clave para búsqueda exacta.
+            keywords_partial: Lista de palabras clave para búsqueda parcial (opcional).
+
+        Returns:
+            str or None: Nombre de la columna encontrada o None si no hay coincidencia.
         """
         if df is None or df.empty:
             return None
@@ -418,22 +450,19 @@ class DataProcessor:
         return None
 
     @staticmethod
-
-# ==================================================================================================
-# SECCIÓN AUXILIAR: VALIDACIÓN DE COLUMNAS COD Y SISTEMAS
-# ==================================================================================================
-# La siguiente sección garantiza que el sistema pueda detectar de forma robusta
-# las columnas COD y Sistemas en la matriz de paradas, independientemente de
-# variaciones en la nomenclatura o formato del archivo Excel de origen.
-# Estas columnas son críticas para el filtrado granular del Módulo 2.
-# ==================================================================================================
-
     def process_dates(df, sheet_name):
         """
         [MOTOR CLÍNICO DE FECHAS]
         Identifica la columna de fecha con extrema precisión, soluciona vacíos de Excel
         mediante Forward Fill (ffill) para celdas combinadas, y realiza la conversión absoluta a Date.
         Esto garantiza que TODAS las filas se enlacen al día seleccionado en el panel.
+
+        Args:
+            df: DataFrame con datos potencialmente crudos.
+            sheet_name: Nombre de la hoja para fines de logging.
+
+        Returns:
+            DataFrame: DataFrame con columnas FECHA_DATETIME, FECHA_STD, AÑO, MES, SEMANA.
         """
         df = DataProcessor.clean_column_names(df)
 
@@ -474,6 +503,12 @@ class DataProcessor:
         Extrae y construye la 'Hora de Inicio' y 'Hora Final' para el gráfico de Línea de Vida.
         Si la columna "Hora Final" no existe, proyecta matemáticamente el bloque sumando 
         los minutos de parada al inicio.
+
+        Args:
+            df: DataFrame de detalle de paradas.
+
+        Returns:
+            DataFrame: DataFrame con columnas TIMELINE_START y TIMELINE_END.
         """
         if df.empty: return df
 
@@ -529,6 +564,12 @@ def load_and_parse_excel(uploaded_file):
     1. Desencripta el archivo y mapea las hojas.
     2. Ejecuta el escaneo de Offsets buscando las cabeceras.
     3. Extrae, purifica y formatea los DataFrames específicos.
+
+    Args:
+        uploaded_file: Archivo subido por el usuario (st.file_uploader).
+
+    Returns:
+        dict: Diccionario con DataFrames procesados para 'CAPS', 'Produccion' y 'Detalle parada'.
     """
     try:
         excel_data = pd.ExcelFile(uploaded_file)
@@ -584,6 +625,22 @@ class FilterEngine:
 
     @staticmethod
     def apply_master_filters(df, p_inicio, p_fin, p_tipo, p_ano, p_mes, p_sem, turnos_sel):
+        """
+        Aplica filtros maestros de tiempo y turno sobre un DataFrame.
+
+        Args:
+            df: DataFrame a filtrar.
+            p_inicio: Fecha de inicio del rango.
+            p_fin: Fecha de fin del rango.
+            p_tipo: Tipo de filtro temporal seleccionado.
+            p_ano: Año seleccionado (para filtros anuales/mensuales).
+            p_mes: Mes seleccionado.
+            p_sem: Semana ISO seleccionada.
+            turnos_sel: Lista de turnos seleccionados.
+
+        Returns:
+            DataFrame: DataFrame filtrado según los criterios especificados.
+        """
         if df is None or df.empty or 'FECHA_STD' not in df.columns:
             return df
 
@@ -623,6 +680,14 @@ class BusinessLogic:
         """
         Garantiza que los datos se extraigan directamente de la hoja CAPS (Disponibilidad, Rendimiento, Calidad, OEE)
         y de la hoja Produccion para los volúmenes, logrando exactitud clínica del 100%.
+
+        Args:
+            df_caps: DataFrame de la hoja CAPS.
+            df_prod: DataFrame de la hoja Produccion.
+            df_paradas: DataFrame de la hoja Detalle parada.
+
+        Returns:
+            dict: Diccionario con métricas calculadas, DataFrames de soporte y datos de timeline.
         """
         resultados = {
             # Núcleo OEE Exacto (CAPS)
@@ -731,6 +796,16 @@ class QualityControl:
 
     @staticmethod
     def generate_insights(metrics, target_oee):
+        """
+        Genera una lista de insights ejecutivos basados en las métricas calculadas.
+
+        Args:
+            metrics: Diccionario de métricas calculadas por BusinessLogic.
+            target_oee: Meta de OEE configurada por el usuario.
+
+        Returns:
+            list: Lista de strings con insights formateados en Markdown.
+        """
         insights = []
 
         # Auditoría de Meta Global
@@ -788,22 +863,6 @@ class PlotlyEngine:
                 'threshold': {'line': {'color': "#C0392B", 'width': 3}, 'thickness': 0.8, 'value': target}
             }
         ))
-
-# ==================================================================================================
-# MOTOR DE FILTRADO COD/SISTEMAS - DOCUMENTACIÓN TÉCNICA
-# ==================================================================================================
-# El filtrado por COD (Código de Parada) permite al usuario segmentar el análisis
-# Pareto según el código identificador único de cada evento. Esto es útil para
-# identificar patrones recurrentes asociados a códigos específicos (ej: PA02, PO16).
-#
-# El filtrado por Sistemas permite segmentar por el subsistema o área afectada
-# durante la parada (ej: Estación N° 1, Limpieza, Ajustes, etc.). Esto facilita
-# el análisis de impacto por área funcional dentro de la línea de producción.
-#
-# Ambos filtros operan de forma independiente pero acumulativa con los filtros
-# existentes de Categoría y Causa, permitiendo una segmentación multidimensional.
-# ==================================================================================================
-
         fig.update_layout(height=280, margin=dict(l=20, r=20, t=40, b=20), paper_bgcolor='rgba(0,0,0,0)')
         return fig
 
@@ -1124,21 +1183,6 @@ class ReportGenerator(FPDF):
             self.image(imgs_paths['bar_paradas'], x=15, w=180)
             self.ln(90)
 
-
-# ==================================================================================================
-# APLICACIÓN DE FILTROS GRANULARES EN MÓDULO 2
-# ==================================================================================================
-# En esta sección se aplican los filtros de COD y Sistemas seleccionados por el
-# usuario en el panel lateral. La lógica de filtrado sigue el mismo patrón
-# defensivo utilizado para Categoría y Causa:
-#   1. Verificar que la columna existe en el DataFrame maestro
-#   2. Verificar que el atributo de filtro tiene valores seleccionados
-#   3. Aplicar la máscara booleana de forma condicional
-#
-# Este enfoque garantiza que el sistema no falle si alguna columna no está presente
-# en la matriz de paradas del periodo seleccionado.
-# ==================================================================================================
-
         # -------------------------------------------------------------
         # BLOQUE DE VALIDACIÓN Y FIRMAS AUTÓGRAFAS
         # -------------------------------------------------------------
@@ -1166,6 +1210,17 @@ class TelegramGateway:
 
     @staticmethod
     def dispatch_report(pdf_path, metrics, ctx_date):
+        """
+        Envía el reporte PDF generado a través de la API de Telegram.
+
+        Args:
+            pdf_path: Ruta física del archivo PDF a enviar.
+            metrics: Diccionario de métricas para incluir en el mensaje.
+            ctx_date: Fecha del contexto analizado.
+
+        Returns:
+            bool: True si el envío fue exitoso, False en caso contrario.
+        """
         url = f"https://api.telegram.org/bot{AppConfig.TELEGRAM_TOKEN}/sendDocument"
 
         top_falla = metrics['Top_Paradas'].iloc[0]['Descripcion'] if not metrics['Top_Paradas'].empty else 'Operatividad Impecable'
@@ -1212,11 +1267,14 @@ class DashboardUI:
         self.ctx_str = ""
         self.str_turnos = ""
         # =============================================================================
-        # NUEVOS ATRIBUTOS: Soportes para filtros granulares de Categoría, Causa, COD y Sistemas (Módulo 2)
+        # NUEVOS ATRIBUTOS: Soportes para filtros granulares de Categoría y Causa (Módulo 2)
         # =============================================================================
         self.df_paradas_master = pd.DataFrame()
         self.filtro_categorias = []
         self.filtro_causas = []
+        # =============================================================================
+        # ATRIBUTOS ADICIONALES: Filtros COD y Sistemas para Módulo 2
+        # =============================================================================
         self.filtro_cod = []
         self.filtro_sistemas = []
 
@@ -1237,6 +1295,12 @@ class DashboardUI:
         [MEJORA CODIFICADA: Carga Inteligente al Día de Hoy]
         Detecta el día exacto en que se encuentra el servidor y carga los datos 
         del último turno operativo automáticamente.
+
+        Args:
+            df_caps: DataFrame de CAPS para inferir el rango de fechas disponible.
+
+        Returns:
+            tuple: (fecha_mínima, fecha_máxima, fecha_objetivo_inteligente)
         """
         today_date = datetime.now().date()
         min_date, max_date = today_date, today_date
@@ -1342,10 +1406,10 @@ class DashboardUI:
         self.metricas = BusinessLogic.calcular_metricas(df_caps_f, df_prod_f, df_par_f)
 
         # =============================================================================
-        # NUEVA SECCIÓN: FILTROS GRANULARES DE CATEGORÍA, CAUSA, COD Y SISTEMAS PARA MÓDULO 2
+        # NUEVA SECCIÓN: FILTROS GRANULARES DE CATEGORÍA Y CAUSA PARA MÓDULO 2
         # =============================================================================
         # Conservamos el DataFrame maestro de paradas (ya filtrado por tiempo/turno) para
-        # permitir un filtrado adicional por Categoría, Causa, COD y Sistemas en el Análisis Científico Extendido.
+        # permitir un filtrado adicional por Categoría y Causa en el Análisis Científico Extendido.
         self.df_paradas_master = df_par_f.copy()
 
         st.sidebar.markdown("---")
@@ -1354,8 +1418,6 @@ class DashboardUI:
 
         col_category = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['CATEGORY', 'CATEGORIA'])
         col_cause = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['CAUSE', 'CAUSA', 'MOTIVO'])
-        col_cod = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['COD', 'CODE', 'CÓDIGO'])
-        col_sistemas = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['SISTEMAS', 'SISTEMA', 'SYSTEMS', 'SYSTEM'])
 
         if col_category:
             categorias_unicas = sorted(self.df_paradas_master[col_category].dropna().unique().tolist())
@@ -1381,27 +1443,26 @@ class DashboardUI:
             self.filtro_causas = []
             st.sidebar.info("Columna 'Cause' no detectada en la matriz de paradas.")
 
-        # -------------------------------------------------------------------------
-        # NUEVOS FILTROS: COD Y SISTEMAS (Versión 7.2.0)
-        # -------------------------------------------------------------------------
-        # Filtro por Código de Parada (COD)
-        # Este filtro permite segmentar el análisis Pareto por el código identificador
-        # de cada evento de parada registrado en la matriz Excel.
+        # =============================================================================
+        # NUEVOS FILTROS: COD Y SISTEMAS PARA MÓDULO 2
+        # =============================================================================
+        # Se busca la columna COD exactamente como aparece en el Excel (sin tilde, en mayúsculas).
+        # Esto garantiza que se use la columna correcta y no se confunda con otras similares.
+        col_cod = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['COD'])
+        col_sistemas = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['SISTEMAS', 'SISTEMA'])
+
         if col_cod:
             cod_unicos = sorted(self.df_paradas_master[col_cod].dropna().unique().tolist())
             self.filtro_cod = st.sidebar.multiselect(
-                "🔢  Filtrar por Código (COD)", 
+                "🔢  Filtrar por COD", 
                 options=cod_unicos, 
                 default=cod_unicos,
-                help="Segmente el análisis Pareto por código de parada."
+                help="Segmente el análisis Pareto por código de parada (COD)."
             )
         else:
             self.filtro_cod = []
             st.sidebar.info("Columna 'COD' no detectada en la matriz de paradas.")
 
-        # Filtro por Sistemas
-        # Este filtro permite segmentar el análisis Pareto por el sistema afectado
-        # durante el evento de parada (ej: Estación N° 1, Limpieza, etc.)
         if col_sistemas:
             sistemas_unicos = sorted(self.df_paradas_master[col_sistemas].dropna().unique().tolist())
             self.filtro_sistemas = st.sidebar.multiselect(
@@ -1508,8 +1569,8 @@ class DashboardUI:
             # Localización robusta de columnas de clasificación
             col_category = DataProcessor.find_column_exact_or_partial(df_par, ['CATEGORY', 'CATEGORIA'])
             col_cause = DataProcessor.find_column_exact_or_partial(df_par, ['CAUSE', 'CAUSA', 'MOTIVO'])
-            col_cod = DataProcessor.find_column_exact_or_partial(df_par, ['COD', 'CODE', 'CÓDIGO'])
-            col_sistemas = DataProcessor.find_column_exact_or_partial(df_par, ['SISTEMAS', 'SISTEMA', 'SYSTEMS', 'SYSTEM'])
+            col_cod = DataProcessor.find_column_exact_or_partial(df_par, ['COD'])
+            col_sistemas = DataProcessor.find_column_exact_or_partial(df_par, ['SISTEMAS', 'SISTEMA'])
             col_min = DataProcessor.find_column_exact_or_partial(df_par, ['PARADAS (MINUTOS)', 'MINUTOS'])
             col_desc = DataProcessor.find_column_exact_or_partial(df_par, ['DESCRIPCIÓN ESPECIFICA', 'DESCRIPCION ESPECIFICA', 'MOTIVO DE PARADA', 'FALLA'])
 
@@ -1520,16 +1581,10 @@ class DashboardUI:
             if col_cause and hasattr(self, 'filtro_causas') and self.filtro_causas:
                 df_par = df_par[df_par[col_cause].isin(self.filtro_causas)]
 
-            # -------------------------------------------------------------------------
-            # APLICACIÓN DE NUEVOS FILTROS: COD Y SISTEMAS (Versión 7.2.0)
-            # -------------------------------------------------------------------------
-            # Filtro por Código de Parada (COD)
-            # Se aplica únicamente si la columna COD fue detectada y el usuario seleccionó valores
+            # Aplicación de filtros COD y Sistemas
             if col_cod and hasattr(self, 'filtro_cod') and self.filtro_cod:
                 df_par = df_par[df_par[col_cod].isin(self.filtro_cod)]
 
-            # Filtro por Sistemas
-            # Se aplica únicamente si la columna Sistemas fue detectada y el usuario seleccionó valores
             if col_sistemas and hasattr(self, 'filtro_sistemas') and self.filtro_sistemas:
                 df_par = df_par[df_par[col_sistemas].isin(self.filtro_sistemas)]
 
