@@ -1354,7 +1354,7 @@ class DashboardUI:
 
         col_category = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['CATEGORY', 'CATEGORIA'])
         col_cause = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['CAUSE', 'CAUSA', 'MOTIVO'])
-        col_cod = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['COD', 'COD', 'COD'])
+        col_cod = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['COD'])
         col_sistemas = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['SISTEMAS', 'SISTEMA', 'SYSTEMS', 'SYSTEM'])
 
         if col_category:
