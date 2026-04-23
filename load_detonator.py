@@ -322,7 +322,7 @@ class LogManager:
         format='%(asctime)s - [%(levelname)s] - CAVA_CORE: %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S',
         handlers=[
-            logging.FileHandler(log_file_path, encoding='utf-8'),
+            logging.FileHandler(log_file_path, ening='utf-8'),
             logging.StreamHandler()
         ]
     )
@@ -1354,7 +1354,7 @@ class DashboardUI:
 
         col_category = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['CATEGORY', 'CATEGORIA'])
         col_cause = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['CAUSE', 'CAUSA', 'MOTIVO'])
-        col_cod = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['COD', 'CODE', 'CÓDIGO'])
+        col_cod = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['COD', 'COD', 'COD'])
         col_sistemas = DataProcessor.find_column_exact_or_partial(self.df_paradas_master, ['SISTEMAS', 'SISTEMA', 'SYSTEMS', 'SYSTEM'])
 
         if col_category:
