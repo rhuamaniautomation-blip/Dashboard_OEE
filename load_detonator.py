@@ -417,6 +417,56 @@ class DataProcessor:
         return df
 
     @staticmethod
+    def find_oee_column_blindado(df, letra_fallback='AV'):
+        """
+        [PARCHE 7.2.1 - BLINDAJE ANTI-COLISIÓN OEE/OOE]
+        Localiza la columna real de OEE evitando cualquier colisión con la columna
+        vecina 'OOE' (Overall Operations Effectiveness), que en la matriz CAPS se
+        ubica justo a la derecha (columna AW) de la columna OEE (columna AV).
+
+        Estrategia de 2 capas:
+        Fase 1: Coincidencia EXACTA de texto igual a 'OEE' (rechazando explícitamente
+                 cualquier cabecera que sea 'OOE' o que contenga esa palabra).
+        Fase 2: Si no hay match textual fiable, se recurre a la posición física de
+                 columna en Excel (por defecto 'AV', tal como confirma la matriz
+                 fuente LURIN CAPS OEE), garantizando que jamás se lea la columna
+                 contigua por error de nombre.
+
+        Args:
+            df: DataFrame de la hoja CAPS ya con cabeceras limpias.
+            letra_fallback: Letra de columna Excel de respaldo (por defecto 'AV').
+
+        Returns:
+            str or None: Nombre de la columna que representa el OEE real.
+        """
+        if df is None or df.empty:
+            return None
+
+        # Fase 1: Búsqueda exacta y estricta, EXCLUYENDO explícitamente 'OOE'
+        for col in df.columns:
+            col_norm = str(col).strip().upper()
+            if col_norm == 'OOE':
+                continue  # Blindaje: nunca aceptar la columna OOE como si fuera OEE
+            if col_norm == 'OEE':
+                return col
+
+        # Fase 2: Respaldo posicional por letra de columna Excel (ej. 'AV')
+        try:
+            from openpyxl.utils import column_index_from_string
+            idx_pos = column_index_from_string(letra_fallback) - 1  # 0-indexado
+            if 0 <= idx_pos < len(df.columns):
+                col_fallback = df.columns[idx_pos]
+                if str(col_fallback).strip().upper() != 'OOE':
+                    LogManager.warning(
+                        f"OEE no ubicado por nombre; se usó respaldo posicional columna {letra_fallback} ('{col_fallback}')."
+                    )
+                    return col_fallback
+        except Exception as e:
+            LogManager.error(f"Fallo en respaldo posicional de columna OEE: {e}")
+
+        return None
+
+    @staticmethod
     def find_column_exact_or_partial(df, keywords_exact, keywords_partial=None):
         """
         Algoritmo de búsqueda jerárquica para ubicar columnas aunque cambien levemente de nombre:
@@ -714,7 +764,9 @@ class BusinessLogic:
                     df_caps_219 = df_caps_219[mask_219]
 
             # Mapeo exacto de indicadores pre-calculados por el área
-            c_oee  = DataProcessor.find_column_exact_or_partial(df_caps_219, ['OEE'])
+            # [FIX 7.2.1] Se usa el localizador blindado para evitar leer por error
+            # la columna vecina 'OOE' (AW) en lugar de la columna real 'OEE' (AV).
+            c_oee  = DataProcessor.find_oee_column_blindado(df_caps_219, letra_fallback='AV')
             c_disp = DataProcessor.find_column_exact_or_partial(df_caps_219, ['EQUIPMENT AVAILIBILITY', 'AVAILABILITY', 'DISPONIBILIDAD'])
             c_perf = DataProcessor.find_column_exact_or_partial(df_caps_219, ['PERFORMANCE', 'RENDIMIENTO'])
             c_qual = DataProcessor.find_column_exact_or_partial(df_caps_219, ['QUALITY', 'CALIDAD'])
@@ -1293,6 +1345,13 @@ class DashboardUI:
         <div class="cava-logo-container">
             <h2 class="cava-logo-title">CAVA</h2>
             <p class="cava-logo-subtitle">ROBOTICS & AUTOMATION</p>
+        </div>
+        <div style="text-align:center; margin-top:-8px; margin-bottom:18px;">
+            <p style="font-size:0.78rem; color:var(--text-muted); line-height:1.3; margin:0;">
+                Software diseñado por <strong>CAVA</strong><br>
+                Especialistas en Robótica y Automatización<br>
+                <em>Roger Huamani</em>
+            </p>
         </div>
         """, unsafe_allow_html=True)
 
