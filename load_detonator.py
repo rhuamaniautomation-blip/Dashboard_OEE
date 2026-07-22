@@ -772,9 +772,18 @@ class BusinessLogic:
             c_qual = DataProcessor.find_column_exact_or_partial(df_caps_219, ['QUALITY', 'CALIDAD'])
 
             def extraer_promedio_clinico(df, col):
-                """Obtiene el promedio válido de la columna elegida. Maneja auto-escalado si el Excel usa decimales."""
+                """
+                Obtiene el promedio válido de la columna elegida.
+                [FIX 7.2.2] Excluye estrictamente las celdas <= 0 (turnos sin producción,
+                días no operativos o celdas vacías interpretadas como 0), ya que promediarlas
+                junto a los turnos productivos distorsiona el indicador real hacia abajo.
+                Solo se promedian celdas numéricas VÁLIDAS y mayores a cero.
+                Maneja auto-escalado si el Excel usa decimales (0.85 -> 85.0%).
+                """
                 if col and col in df.columns:
                     s = pd.to_numeric(df[col], errors='coerce').dropna()
+                    # Blindaje clínico: solo turnos con producción real (celda > 0)
+                    s = s[s > 0]
                     if not s.empty:
                         val = s.mean()
                         # Auto-escala heurística a porcentaje: 0.85 -> 85.0%
