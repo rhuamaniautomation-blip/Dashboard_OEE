@@ -734,6 +734,119 @@ class BusinessLogic:
     """Ejecuta la consolidación directa desde la matriz Excel respetando sus cálculos de origen."""
 
     @staticmethod
+    def extraer_promedio_clinico(df, col):
+        """
+        Obtiene el promedio válido de la columna elegida.
+        [FIX 7.2.2] Excluye estrictamente las celdas <= 0 (turnos sin producción,
+        días no operativos o celdas vacías interpretadas como 0), ya que promediarlas
+        junto a los turnos productivos distorsiona el indicador real hacia abajo.
+        Solo se promedian celdas numéricas VÁLIDAS y mayores a cero.
+        Maneja auto-escalado si el Excel usa decimales (0.85 -> 85.0%).
+
+        Nota: se comparte entre el cálculo de métricas agregadas (Módulo 1) y el
+        histórico por periodo (Módulo 3) para garantizar el mismo criterio clínico.
+        """
+        if df is None or df.empty or not col or col not in df.columns:
+            return 0.0
+        s = pd.to_numeric(df[col], errors='coerce').dropna()
+        # Blindaje clínico: solo turnos con producción real (celda > 0)
+        s = s[s > 0]
+        if s.empty:
+            return 0.0
+        val = s.mean()
+        # Auto-escala heurística a porcentaje: 0.85 -> 85.0%
+        return (val * 100) if val <= 1.5 else val
+
+    @staticmethod
+    def filtrar_maquina_219(df_caps):
+        """
+        Aísla los registros de la Máquina 219 (Carga de Detonadores) dentro de matrices
+        CAPS multi-máquina. Si no se detecta columna de máquina o no hay coincidencias,
+        retorna el DataFrame íntegro sin alterar (comportamiento seguro por defecto).
+        """
+        if df_caps is None or df_caps.empty:
+            return pd.DataFrame()
+        col_maq = DataProcessor.find_column_exact_or_partial(df_caps, ['MACHINE', 'MAQUINA', 'LÍNEA', 'LINEA', 'EQUIPO'])
+        df_219 = df_caps.copy()
+        if col_maq:
+            mask_219 = df_219[col_maq].astype(str).str.contains('219|Carga de Detonadores', case=False, na=False)
+            if mask_219.any():
+                df_219 = df_219[mask_219]
+        return df_219
+
+    @staticmethod
+    def historial_por_periodo(df_caps, granularidad, anio_sel=None):
+        """
+        [MÓDULO 3 - HISTÓRICO DE OEE Y DISPONIBILIDAD]
+        Agrupa la matriz CAPS (ya aislada a la Máquina 219) por la granularidad temporal
+        elegida y calcula el promedio clínico (solo celdas > 0) de OEE y Disponibilidad
+        (Equipment Availability) para cada periodo, listo para graficar en barras.
+
+        Args:
+            df_caps: DataFrame crudo de la hoja CAPS (sin filtrar por fecha; histórico completo).
+            granularidad: 'Año', 'Mes Fiscal' o 'Semana ISO'.
+            anio_sel: Año requerido cuando la granularidad es 'Mes Fiscal' o 'Semana ISO'.
+
+        Returns:
+            pd.DataFrame: Columnas ['Periodo', 'OEE', 'Disponibilidad'], ordenado cronológicamente.
+        """
+        columnas_vacias = pd.DataFrame(columns=['Periodo', 'OEE', 'Disponibilidad'])
+        if df_caps is None or df_caps.empty:
+            return columnas_vacias
+
+        df_219 = BusinessLogic.filtrar_maquina_219(df_caps)
+        if df_219.empty or 'AÑO' not in df_219.columns:
+            return columnas_vacias
+
+        c_disp = DataProcessor.find_metric_column_blindado(
+            df_219, 'Equipment Availability', 'AR', nombres_excluir=['Availability']
+        )
+        c_oee = DataProcessor.find_metric_column_blindado(
+            df_219, 'OEE', 'AV', nombres_excluir=['OOE']
+        )
+        if not c_oee and not c_disp:
+            return columnas_vacias
+
+        registros = []
+
+        if granularidad == 'Año':
+            grupos = sorted(df_219['AÑO'].dropna().unique())
+            for anio in grupos:
+                df_g = df_219[df_219['AÑO'] == anio]
+                registros.append({
+                    'Periodo': str(int(anio)),
+                    'OEE': BusinessLogic.extraer_promedio_clinico(df_g, c_oee),
+                    'Disponibilidad': BusinessLogic.extraer_promedio_clinico(df_g, c_disp)
+                })
+
+        elif granularidad == 'Mes Fiscal' and 'MES' in df_219.columns and anio_sel is not None:
+            df_anio = df_219[df_219['AÑO'] == anio_sel]
+            nombres_mes = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+            for mes in sorted(df_anio['MES'].dropna().unique()):
+                df_g = df_anio[df_anio['MES'] == mes]
+                etiqueta = nombres_mes[int(mes) - 1] if 1 <= int(mes) <= 12 else str(int(mes))
+                registros.append({
+                    'Periodo': f"{etiqueta} {int(anio_sel)}",
+                    'OEE': BusinessLogic.extraer_promedio_clinico(df_g, c_oee),
+                    'Disponibilidad': BusinessLogic.extraer_promedio_clinico(df_g, c_disp)
+                })
+
+        elif granularidad == 'Semana ISO' and 'SEMANA' in df_219.columns and anio_sel is not None:
+            df_anio = df_219[df_219['AÑO'] == anio_sel]
+            for sem in sorted(df_anio['SEMANA'].dropna().unique()):
+                df_g = df_anio[df_anio['SEMANA'] == sem]
+                registros.append({
+                    'Periodo': f"Sem {int(sem)}",
+                    'OEE': BusinessLogic.extraer_promedio_clinico(df_g, c_oee),
+                    'Disponibilidad': BusinessLogic.extraer_promedio_clinico(df_g, c_disp)
+                })
+
+        if not registros:
+            return columnas_vacias
+
+        return pd.DataFrame(registros)
+
+    @staticmethod
     def calcular_metricas(df_caps, df_prod, df_paradas):
         """
         Garantiza que los datos se extraigan directamente de la hoja CAPS (Disponibilidad, Rendimiento, Calidad, OEE)
@@ -764,12 +877,7 @@ class BusinessLogic:
         # ---------------------------------------------------------
         if not df_caps.empty:
             # Filtrado por equipo específico en matrices multi-máquina
-            col_maq = DataProcessor.find_column_exact_or_partial(df_caps, ['MACHINE', 'MAQUINA', 'LÍNEA', 'LINEA', 'EQUIPO'])
-            df_caps_219 = df_caps.copy()
-            if col_maq:
-                mask_219 = df_caps_219[col_maq].astype(str).str.contains('219|Carga de Detonadores', case=False, na=False)
-                if mask_219.any():
-                    df_caps_219 = df_caps_219[mask_219]
+            df_caps_219 = BusinessLogic.filtrar_maquina_219(df_caps)
 
             # Mapeo exacto de indicadores pre-calculados por el área
             # [FIX 7.2.3] Se usa el localizador blindado universal para las 4 columnas de
@@ -788,29 +896,10 @@ class BusinessLogic:
                 df_caps_219, 'OEE', 'AV', nombres_excluir=['OOE']
             )
 
-            def extraer_promedio_clinico(df, col):
-                """
-                Obtiene el promedio válido de la columna elegida.
-                [FIX 7.2.2] Excluye estrictamente las celdas <= 0 (turnos sin producción,
-                días no operativos o celdas vacías interpretadas como 0), ya que promediarlas
-                junto a los turnos productivos distorsiona el indicador real hacia abajo.
-                Solo se promedian celdas numéricas VÁLIDAS y mayores a cero.
-                Maneja auto-escalado si el Excel usa decimales (0.85 -> 85.0%).
-                """
-                if col and col in df.columns:
-                    s = pd.to_numeric(df[col], errors='coerce').dropna()
-                    # Blindaje clínico: solo turnos con producción real (celda > 0)
-                    s = s[s > 0]
-                    if not s.empty:
-                        val = s.mean()
-                        # Auto-escala heurística a porcentaje: 0.85 -> 85.0%
-                        return (val * 100) if val <= 1.5 else val
-                return 0.0
-
-            resultados['OEE'] = extraer_promedio_clinico(df_caps_219, c_oee)
-            resultados['Disponibilidad'] = extraer_promedio_clinico(df_caps_219, c_disp)
-            resultados['Rendimiento'] = extraer_promedio_clinico(df_caps_219, c_perf)
-            resultados['Calidad'] = extraer_promedio_clinico(df_caps_219, c_qual)
+            resultados['OEE'] = BusinessLogic.extraer_promedio_clinico(df_caps_219, c_oee)
+            resultados['Disponibilidad'] = BusinessLogic.extraer_promedio_clinico(df_caps_219, c_disp)
+            resultados['Rendimiento'] = BusinessLogic.extraer_promedio_clinico(df_caps_219, c_perf)
+            resultados['Calidad'] = BusinessLogic.extraer_promedio_clinico(df_caps_219, c_qual)
 
         # ---------------------------------------------------------
         # B. VOLUMETRÍA Y TRAZABILIDAD: HOJA 'PRODUCCION'
@@ -916,6 +1005,54 @@ class QualityControl:
 # ==================================================================================================
 class PlotlyEngine:
     """Núcleo responsable de la creación de arte visual, gráficos de alta resolución y mapas térmicos."""
+
+    @staticmethod
+    def create_historical_bar(df_hist, target_oee=85.0):
+        """
+        [MÓDULO 3 - GRÁFICO HISTÓRICO OEE vs DISPONIBILIDAD]
+        Gráfico de barras agrupadas (una barra OEE + una barra Disponibilidad por periodo)
+        con estética institucional CAVA (dorado para OEE, azul profundo para Disponibilidad)
+        y una línea de referencia horizontal marcando el Benchmark OEE configurado.
+
+        Args:
+            df_hist: DataFrame con columnas ['Periodo', 'OEE', 'Disponibilidad'].
+            target_oee: Meta gerencial de OEE (%) para trazar la línea de referencia.
+
+        Returns:
+            go.Figure: Figura Plotly lista para st.plotly_chart.
+        """
+        if df_hist is None or df_hist.empty:
+            return go.Figure().update_layout(
+                title="Sin data histórica disponible para los periodos seleccionados.",
+                template="simple_white"
+            )
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=df_hist['Periodo'], y=df_hist['OEE'], name='OEE',
+            marker_color='#C07F00',
+            text=df_hist['OEE'], texttemplate='%{text:.1f}%', textposition='outside'
+        ))
+        fig.add_trace(go.Bar(
+            x=df_hist['Periodo'], y=df_hist['Disponibilidad'], name='Disponibilidad (Equipment Availability)',
+            marker_color='#0A2540',
+            text=df_hist['Disponibilidad'], texttemplate='%{text:.1f}%', textposition='outside'
+        ))
+
+        fig.add_hline(
+            y=target_oee, line_dash="dash", line_color="#C0392B",
+            annotation_text=f"Meta OEE: {target_oee:.1f}%", annotation_position="top left"
+        )
+
+        fig.update_layout(
+            title={'text': 'Histórico de OEE y Disponibilidad de Línea', 'font': {'size': 18, 'color': '#0A2540'}},
+            barmode='group', template="simple_white", height=480,
+            xaxis_title="Periodo", yaxis_title="Porcentaje (%)",
+            yaxis=dict(range=[0, max(100, df_hist[['OEE', 'Disponibilidad']].max().max() * 1.15)]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=10, r=10, t=70, b=10)
+        )
+        return fig
 
     @staticmethod
     def create_gauge(value, title, target, color_theme):
@@ -1813,6 +1950,53 @@ class DashboardUI:
             width="stretch", hide_index=True
         )
 
+    def render_tab_modulo3_historial(self, target_oee):
+        """
+        [MÓDULO 3: HISTÓRICO DE OEE Y DISPONIBILIDAD]
+        Grafica en barras agrupadas la evolución histórica del OEE y la Disponibilidad
+        de Equipo (Equipment Availability) de la línea, con filtro propio de granularidad:
+        Año, Mes Fiscal o Semana ISO. Usa siempre el histórico COMPLETO de la matriz CAPS
+        (independiente del filtro de fecha puntual del panel lateral), para permitir
+        comparar periodos completos entre sí.
+        """
+        st.markdown("### 📊 Histórico de Indicadores: OEE y Disponibilidad de Línea")
+        st.write("Seleccione la granularidad temporal para comparar la evolución del OEE y la Disponibilidad de Equipo (Equipment Availability) de la Máquina 219. El cálculo respeta el mismo criterio clínico usado en el resto del sistema: solo se promedian turnos con producción real (celdas > 0).")
+
+        df_caps_raw = self.data_dict.get('CAPS', pd.DataFrame()) if self.data_dict else pd.DataFrame()
+
+        if df_caps_raw.empty or 'AÑO' not in df_caps_raw.columns:
+            st.warning("⚠️ No hay suficiente data histórica en la hoja CAPS para construir el histórico.")
+            return
+
+        col_g1, col_g2, col_g3 = st.columns([1.2, 1, 1])
+        with col_g1:
+            granularidad = st.radio(
+                "Agrupar histórico por:", ["Año", "Mes Fiscal", "Semana ISO"],
+                horizontal=True, key="m3_granularidad"
+            )
+
+        anios_disponibles = sorted(df_caps_raw['AÑO'].dropna().unique(), reverse=True)
+        anio_sel = None
+
+        if granularidad in ["Mes Fiscal", "Semana ISO"]:
+            with col_g2:
+                anio_sel = st.selectbox("Año Base:", anios_disponibles, key="m3_anio")
+
+        df_hist = BusinessLogic.historial_por_periodo(df_caps_raw, granularidad, anio_sel)
+
+        if df_hist.empty:
+            st.info("👈 No se encontraron periodos válidos con los filtros seleccionados.")
+            return
+
+        fig_hist = PlotlyEngine.create_historical_bar(df_hist, target_oee)
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+        with st.expander("📄 Ver tabla numérica del histórico"):
+            st.dataframe(
+                df_hist.style.format({'OEE': '{:.1f}%', 'Disponibilidad': '{:.1f}%'}),
+                use_container_width=True, hide_index=True
+            )
+
     def trigger_pdf_pipeline(self):
         """
         Dispara y Orquesta: 
@@ -1923,9 +2107,10 @@ class DashboardUI:
         # -------------------------------------------------------------
         # SISTEMA DE PESTAÑAS (TABS) MODERNOS
         # -------------------------------------------------------------
-        tab1, tab2 = st.tabs([
+        tab1, tab2, tab3 = st.tabs([
             "📋 MÓDULO 1: Dashboard Ejecutivo (Resumen)", 
-            "📈 MÓDULO 2: Análisis Científico y Pareto Extendido"
+            "📈 MÓDULO 2: Análisis Científico y Pareto Extendido",
+            "📊 MÓDULO 3: Histórico OEE y Disponibilidad"
         ])
 
         with tab1:
@@ -1933,6 +2118,9 @@ class DashboardUI:
 
         with tab2:
             self.render_tab_deep_analytics()
+
+        with tab3:
+            self.render_tab_modulo3_historial(target_oee)
 
         # -------------------------------------------------------------
         # DESPACHO PDF E INTERFAZ DE EXPORTACIÓN
