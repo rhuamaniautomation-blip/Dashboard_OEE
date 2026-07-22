@@ -417,52 +417,60 @@ class DataProcessor:
         return df
 
     @staticmethod
-    def find_oee_column_blindado(df, letra_fallback='AV'):
+    def find_metric_column_blindado(df, nombre_exacto, letra_fallback, nombres_excluir=None):
         """
-        [PARCHE 7.2.1 - BLINDAJE ANTI-COLISIÓN OEE/OOE]
-        Localiza la columna real de OEE evitando cualquier colisión con la columna
-        vecina 'OOE' (Overall Operations Effectiveness), que en la matriz CAPS se
-        ubica justo a la derecha (columna AW) de la columna OEE (columna AV).
+        [PARCHE 7.2.3 - BLINDAJE UNIVERSAL ANTI-COLISIÓN DE INDICADORES CAPS]
+        Localiza la columna real de un indicador (Disponibilidad, Rendimiento, Calidad u OEE)
+        evitando colisiones con columnas vecinas de nombre similar en la matriz CAPS, por ejemplo:
+            - 'Equipment Availability' (AR)  vs  'Availability' (AS)
+            - 'OEE' (AV)                     vs  'OOE' (AW)
 
         Estrategia de 2 capas:
-        Fase 1: Coincidencia EXACTA de texto igual a 'OEE' (rechazando explícitamente
-                 cualquier cabecera que sea 'OOE' o que contenga esa palabra).
-        Fase 2: Si no hay match textual fiable, se recurre a la posición física de
-                 columna en Excel (por defecto 'AV', tal como confirma la matriz
-                 fuente LURIN CAPS OEE), garantizando que jamás se lea la columna
-                 contigua por error de nombre.
+        Fase 1: Coincidencia EXACTA de texto igual a `nombre_exacto` (rechazando explícitamente
+                 cualquier cabecera que esté en `nombres_excluir`).
+        Fase 2: Si no hay match textual fiable, se recurre a la posición física de columna en
+                 Excel (`letra_fallback`, ej. 'AR', 'AT', 'AU', 'AV'), tal como confirma la
+                 matriz fuente LURIN CAPS OEE, garantizando que jamás se lea la columna
+                 contigua por error de nombre o por variaciones/typos de cabecera.
 
         Args:
             df: DataFrame de la hoja CAPS ya con cabeceras limpias.
-            letra_fallback: Letra de columna Excel de respaldo (por defecto 'AV').
+            nombre_exacto: Nombre exacto esperado de la columna (ej. 'Equipment Availability').
+            letra_fallback: Letra de columna Excel de respaldo (ej. 'AR').
+            nombres_excluir: Lista de cabeceras que NUNCA deben aceptarse como coincidencia
+                              (columnas vecinas parecidas que suelen confundirse).
 
         Returns:
-            str or None: Nombre de la columna que representa el OEE real.
+            str or None: Nombre de la columna que representa el indicador real.
         """
         if df is None or df.empty:
             return None
 
-        # Fase 1: Búsqueda exacta y estricta, EXCLUYENDO explícitamente 'OOE'
+        excluir_norm = set(str(n).strip().upper() for n in (nombres_excluir or []))
+        objetivo_norm = str(nombre_exacto).strip().upper()
+
+        # Fase 1: Búsqueda exacta y estricta, EXCLUYENDO explícitamente las columnas vecinas
         for col in df.columns:
             col_norm = str(col).strip().upper()
-            if col_norm == 'OOE':
-                continue  # Blindaje: nunca aceptar la columna OOE como si fuera OEE
-            if col_norm == 'OEE':
+            if col_norm in excluir_norm:
+                continue  # Blindaje: nunca aceptar una columna vecina como si fuera el indicador
+            if col_norm == objetivo_norm:
                 return col
 
-        # Fase 2: Respaldo posicional por letra de columna Excel (ej. 'AV')
+        # Fase 2: Respaldo posicional por letra de columna Excel (ej. 'AR', 'AT', 'AU', 'AV')
         try:
             from openpyxl.utils import column_index_from_string
             idx_pos = column_index_from_string(letra_fallback) - 1  # 0-indexado
             if 0 <= idx_pos < len(df.columns):
                 col_fallback = df.columns[idx_pos]
-                if str(col_fallback).strip().upper() != 'OOE':
+                if str(col_fallback).strip().upper() not in excluir_norm:
                     LogManager.warning(
-                        f"OEE no ubicado por nombre; se usó respaldo posicional columna {letra_fallback} ('{col_fallback}')."
+                        f"'{nombre_exacto}' no ubicado por nombre; se usó respaldo posicional "
+                        f"columna {letra_fallback} ('{col_fallback}')."
                     )
                     return col_fallback
         except Exception as e:
-            LogManager.error(f"Fallo en respaldo posicional de columna OEE: {e}")
+            LogManager.error(f"Fallo en respaldo posicional de columna '{nombre_exacto}': {e}")
 
         return None
 
@@ -764,12 +772,21 @@ class BusinessLogic:
                     df_caps_219 = df_caps_219[mask_219]
 
             # Mapeo exacto de indicadores pre-calculados por el área
-            # [FIX 7.2.1] Se usa el localizador blindado para evitar leer por error
-            # la columna vecina 'OOE' (AW) en lugar de la columna real 'OEE' (AV).
-            c_oee  = DataProcessor.find_oee_column_blindado(df_caps_219, letra_fallback='AV')
-            c_disp = DataProcessor.find_column_exact_or_partial(df_caps_219, ['EQUIPMENT AVAILIBILITY', 'AVAILABILITY', 'DISPONIBILIDAD'])
-            c_perf = DataProcessor.find_column_exact_or_partial(df_caps_219, ['PERFORMANCE', 'RENDIMIENTO'])
-            c_qual = DataProcessor.find_column_exact_or_partial(df_caps_219, ['QUALITY', 'CALIDAD'])
+            # [FIX 7.2.3] Se usa el localizador blindado universal para las 4 columnas de
+            # indicadores (AR, AT, AU, AV), evitando confundirlas con sus vecinas de nombre
+            # parecido (ej. 'Equipment Availability' vs 'Availability', 'OEE' vs 'OOE').
+            c_disp = DataProcessor.find_metric_column_blindado(
+                df_caps_219, 'Equipment Availability', 'AR', nombres_excluir=['Availability']
+            )
+            c_perf = DataProcessor.find_metric_column_blindado(
+                df_caps_219, 'Performance', 'AT', nombres_excluir=['Equipment Availability', 'Availability']
+            )
+            c_qual = DataProcessor.find_metric_column_blindado(
+                df_caps_219, 'Quality', 'AU', nombres_excluir=['Performance', 'OEE', 'OOE']
+            )
+            c_oee  = DataProcessor.find_metric_column_blindado(
+                df_caps_219, 'OEE', 'AV', nombres_excluir=['OOE']
+            )
 
             def extraer_promedio_clinico(df, col):
                 """
