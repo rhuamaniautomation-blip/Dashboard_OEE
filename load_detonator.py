@@ -2092,7 +2092,7 @@ class DashboardUI:
 
         target_oee, df_caps_f = self.render_sidebar_filters()
 
-        st.title("📊 Panel Gerencial Corporativo (Dashboard OEE)")
+        st.title("📊 Dashboard Gerencial OEE")
         st.markdown(f"""
             <div class="info-box">
                 <h4><span style="font-size: 1.3em;">⚙️</span> Identificador de Activo: {AppConfig.MAQUINA_NOMBRE} (Línea {AppConfig.MAQUINA_ID})</h4>
