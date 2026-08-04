@@ -2099,7 +2099,7 @@ class DashboardUI:
                 <p>
                     <strong>Alcance Dinámico:</strong> {self.ctx_str} &nbsp;|&nbsp;
                     <strong>Turno de Trabajo:</strong> {self.str_turnos} &nbsp;|&nbsp;
-                    <strong>Velocidad de Planta:</strong> {AppConfig.PRODUCCION_NOMINAL_HORA:,.0f} UND/h
+                    <strong>Velocidad de Planta:</strong> {AppConfig.PRODUCCION_NOMINAL_HORA:,.0f} UND/H
                 </p>
             </div>
         """, unsafe_allow_html=True)
