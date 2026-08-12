@@ -289,7 +289,7 @@ class AppConfig:
     # Especificaciones Técnicas Constantes - Máquina 219
     # Estos valores son críticos para el cálculo de la producción nominal y la capacidad teórica.
     MAQUINA_ID = "219"
-    MAQUINA_NOMBRE = "Carga de Detonadores"
+    MAQUINA_NOMBRE = "Carga de Detonadores(219)"
     CAPACIDAD_PLACAS_HORA = 268
     DETONADORES_POR_PLACA = 40
     PRODUCCION_NOMINAL_HORA = CAPACIDAD_PLACAS_HORA * DETONADORES_POR_PLACA # 10,720 det/hora
@@ -847,6 +847,61 @@ class BusinessLogic:
         return pd.DataFrame(registros)
 
     @staticmethod
+    def historial_produccion_por_periodo(df_prod, granularidad, anio_sel=None):
+        """
+        [MÓDULO 4 - HISTÓRICO DE PRODUCCIÓN NETA CONFORME]
+        Agrupa la hoja 'Produccion' por la granularidad temporal elegida y suma el volumen
+        de Producción Conforme (unidades liberadas/aprobadas) por periodo, lista para
+        graficar en barras con línea de tendencia.
+
+        Args:
+            df_prod: DataFrame crudo de la hoja Produccion (histórico completo, sin filtrar fecha).
+            granularidad: 'Año', 'Mes Fiscal' o 'Semana ISO'.
+            anio_sel: Año requerido cuando la granularidad es 'Mes Fiscal' o 'Semana ISO'.
+
+        Returns:
+            pd.DataFrame: Columnas ['Periodo', 'Produccion_Conforme'], ordenado cronológicamente.
+        """
+        columnas_vacias = pd.DataFrame(columns=['Periodo', 'Produccion_Conforme'])
+        if df_prod is None or df_prod.empty or 'AÑO' not in df_prod.columns:
+            return columnas_vacias
+
+        c_conf = DataProcessor.find_column_exact_or_partial(
+            df_prod, ['PRODUCCION CONFORME', 'PRODUCCIÓN CONFORME', 'CONFORME']
+        )
+        if not c_conf:
+            return columnas_vacias
+
+        df_prod = df_prod.copy()
+        df_prod[c_conf] = DataProcessor.safe_numeric_conversion(df_prod[c_conf])
+
+        registros = []
+
+        if granularidad == 'Año':
+            for anio in sorted(df_prod['AÑO'].dropna().unique()):
+                df_g = df_prod[df_prod['AÑO'] == anio]
+                registros.append({'Periodo': str(int(anio)), 'Produccion_Conforme': df_g[c_conf].sum()})
+
+        elif granularidad == 'Mes Fiscal' and 'MES' in df_prod.columns and anio_sel is not None:
+            df_anio = df_prod[df_prod['AÑO'] == anio_sel]
+            nombres_mes = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
+            for mes in sorted(df_anio['MES'].dropna().unique()):
+                df_g = df_anio[df_anio['MES'] == mes]
+                etiqueta = nombres_mes[int(mes) - 1] if 1 <= int(mes) <= 12 else str(int(mes))
+                registros.append({'Periodo': f"{etiqueta} {int(anio_sel)}", 'Produccion_Conforme': df_g[c_conf].sum()})
+
+        elif granularidad == 'Semana ISO' and 'SEMANA' in df_prod.columns and anio_sel is not None:
+            df_anio = df_prod[df_prod['AÑO'] == anio_sel]
+            for sem in sorted(df_anio['SEMANA'].dropna().unique()):
+                df_g = df_anio[df_anio['SEMANA'] == sem]
+                registros.append({'Periodo': f"Sem {int(sem)}", 'Produccion_Conforme': df_g[c_conf].sum()})
+
+        if not registros:
+            return columnas_vacias
+
+        return pd.DataFrame(registros)
+
+    @staticmethod
     def calcular_metricas(df_caps, df_prod, df_paradas):
         """
         Garantiza que los datos se extraigan directamente de la hoja CAPS (Disponibilidad, Rendimiento, Calidad, OEE)
@@ -1049,6 +1104,45 @@ class PlotlyEngine:
             barmode='group', template="simple_white", height=480,
             xaxis_title="Periodo", yaxis_title="Porcentaje (%)",
             yaxis=dict(range=[0, max(100, df_hist[['OEE', 'Disponibilidad']].max().max() * 1.15)]),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=10, r=10, t=70, b=10)
+        )
+        return fig
+
+    @staticmethod
+    def create_historical_production_bar(df_hist):
+        """
+        [MÓDULO 4 - GRÁFICO HISTÓRICO DE PRODUCCIÓN NETA CONFORME]
+        Combo de barras (volumen por periodo) + línea de tendencia (evolución entre periodos),
+        con estética institucional CAVA (dorado para las barras, azul profundo para la tendencia).
+
+        Args:
+            df_hist: DataFrame con columnas ['Periodo', 'Produccion_Conforme'].
+
+        Returns:
+            go.Figure: Figura Plotly lista para st.plotly_chart.
+        """
+        if df_hist is None or df_hist.empty:
+            return go.Figure().update_layout(
+                title="Sin data histórica de producción disponible para los periodos seleccionados.",
+                template="simple_white"
+            )
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=df_hist['Periodo'], y=df_hist['Produccion_Conforme'], name='Producción Conforme (unidades)',
+            marker_color='#C07F00',
+            text=df_hist['Produccion_Conforme'], texttemplate='%{text:,.0f}', textposition='outside'
+        ))
+        fig.add_trace(go.Scatter(
+            x=df_hist['Periodo'], y=df_hist['Produccion_Conforme'], name='Tendencia',
+            mode='lines+markers', line=dict(color='#0A2540', width=3), marker=dict(size=8)
+        ))
+
+        fig.update_layout(
+            title={'text': 'Histórico de Producción Neta Conforme', 'font': {'size': 18, 'color': '#0A2540'}},
+            template="simple_white", height=480,
+            xaxis_title="Periodo", yaxis_title="Unidades Conformes",
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             margin=dict(l=10, r=10, t=70, b=10)
         )
@@ -1997,6 +2091,53 @@ class DashboardUI:
                 use_container_width=True, hide_index=True
             )
 
+    def render_tab_modulo4_produccion(self):
+        """
+        [MÓDULO 4: HISTÓRICO DE PRODUCCIÓN NETA CONFORME]
+        Grafica en barras + línea de tendencia la evolución histórica del volumen de
+        Producción Neta Conforme de la línea, con filtro propio de granularidad:
+        Año, Mes Fiscal o Semana ISO. Usa siempre el histórico COMPLETO de la hoja
+        Produccion (independiente del filtro de fecha puntual del panel lateral),
+        para permitir comparar periodos completos entre sí.
+        """
+        st.markdown("### 📦 Histórico de Producción Neta Conforme")
+        st.write("Seleccione la granularidad temporal para comparar la evolución del volumen de Producción Conforme (unidades aprobadas/liberadas) de la línea. Se suma el total de unidades conformes por periodo.")
+
+        df_prod_raw = self.data_dict.get('Produccion', pd.DataFrame()) if self.data_dict else pd.DataFrame()
+
+        if df_prod_raw.empty or 'AÑO' not in df_prod_raw.columns:
+            st.warning("⚠️ No hay suficiente data histórica en la hoja Produccion para construir el histórico.")
+            return
+
+        col_g1, col_g2, col_g3 = st.columns([1.2, 1, 1])
+        with col_g1:
+            granularidad = st.radio(
+                "Agrupar histórico por:", ["Año", "Mes Fiscal", "Semana ISO"],
+                horizontal=True, key="m4_granularidad"
+            )
+
+        anios_disponibles = sorted(df_prod_raw['AÑO'].dropna().unique(), reverse=True)
+        anio_sel = None
+
+        if granularidad in ["Mes Fiscal", "Semana ISO"]:
+            with col_g2:
+                anio_sel = st.selectbox("Año Base:", anios_disponibles, key="m4_anio")
+
+        df_hist_prod = BusinessLogic.historial_produccion_por_periodo(df_prod_raw, granularidad, anio_sel)
+
+        if df_hist_prod.empty:
+            st.info("👈 No se encontraron periodos válidos con los filtros seleccionados.")
+            return
+
+        fig_prod_hist = PlotlyEngine.create_historical_production_bar(df_hist_prod)
+        st.plotly_chart(fig_prod_hist, use_container_width=True)
+
+        with st.expander("📄 Ver tabla numérica del histórico"):
+            st.dataframe(
+                df_hist_prod.style.format({'Produccion_Conforme': '{:,.0f} unds'}),
+                use_container_width=True, hide_index=True
+            )
+
     def trigger_pdf_pipeline(self):
         """
         Dispara y Orquesta: 
@@ -2092,14 +2233,14 @@ class DashboardUI:
 
         target_oee, df_caps_f = self.render_sidebar_filters()
 
-        st.title("📊 Dashboard Gerencial de OEE")
+        st.title("📊 Panel Gerencial Corporativo (Dashboard OEE)")
         st.markdown(f"""
             <div class="info-box">
                 <h4><span style="font-size: 1.3em;">⚙️</span> Identificador de Activo: {AppConfig.MAQUINA_NOMBRE} (Línea {AppConfig.MAQUINA_ID})</h4>
                 <p>
                     <strong>Alcance Dinámico:</strong> {self.ctx_str} &nbsp;|&nbsp;
                     <strong>Turno de Trabajo:</strong> {self.str_turnos} &nbsp;|&nbsp;
-                    <strong>Velocidad de Máquina:</strong> {AppConfig.PRODUCCION_NOMINAL_HORA:,.0f} UND/H
+                    <strong>Velocidad de Planta:</strong> {AppConfig.PRODUCCION_NOMINAL_HORA:,.0f} placas/hora
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -2107,10 +2248,11 @@ class DashboardUI:
         # -------------------------------------------------------------
         # SISTEMA DE PESTAÑAS (TABS) MODERNOS
         # -------------------------------------------------------------
-        tab1, tab2, tab3 = st.tabs([
+        tab1, tab2, tab3, tab4 = st.tabs([
             "📋 MÓDULO 1: Dashboard Ejecutivo (Resumen)", 
             "📈 MÓDULO 2: Análisis Científico y Pareto Extendido",
-            "📊 MÓDULO 3: Histórico OEE y Disponibilidad"
+            "📊 MÓDULO 3: Histórico OEE y Disponibilidad",
+            "📦 MÓDULO 4: Histórico de Producción Conforme"
         ])
 
         with tab1:
@@ -2121,6 +2263,9 @@ class DashboardUI:
 
         with tab3:
             self.render_tab_modulo3_historial(target_oee)
+
+        with tab4:
+            self.render_tab_modulo4_produccion()
 
         # -------------------------------------------------------------
         # DESPACHO PDF E INTERFAZ DE EXPORTACIÓN
