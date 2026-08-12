@@ -2233,14 +2233,14 @@ class DashboardUI:
 
         target_oee, df_caps_f = self.render_sidebar_filters()
 
-        st.title("📊 Panel Gerencial Corporativo (Dashboard OEE)")
+        st.title("📊 Dashboard Gerencial de OEE")
         st.markdown(f"""
             <div class="info-box">
                 <h4><span style="font-size: 1.3em;">⚙️</span> Identificador de Activo: {AppConfig.MAQUINA_NOMBRE} (Línea {AppConfig.MAQUINA_ID})</h4>
                 <p>
                     <strong>Alcance Dinámico:</strong> {self.ctx_str} &nbsp;|&nbsp;
                     <strong>Turno de Trabajo:</strong> {self.str_turnos} &nbsp;|&nbsp;
-                    <strong>Velocidad de Planta:</strong> {AppConfig.PRODUCCION_NOMINAL_HORA:,.0f} unidades/hora
+                    <strong>Ratio de Producción:</strong> {AppConfig.PRODUCCION_NOMINAL_HORA:,.0f} unidades/hora
                 </p>
             </div>
         """, unsafe_allow_html=True)
@@ -2250,7 +2250,7 @@ class DashboardUI:
         # -------------------------------------------------------------
         tab1, tab2, tab3, tab4 = st.tabs([
             "📋 MÓDULO 1: Dashboard Ejecutivo (Resumen)", 
-            "📈 MÓDULO 2: Análisis Científico y Pareto Extendido",
+            "📈 MÓDULO 2: Diagrama de Pareto ",
             "📊 MÓDULO 3: Histórico OEE y Disponibilidad",
             "📦 MÓDULO 4: Histórico de Producción Conforme"
         ])
