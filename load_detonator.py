@@ -292,7 +292,7 @@ class AppConfig:
     MAQUINA_NOMBRE = "Carga de Detonadores(219)"
     CAPACIDAD_PLACAS_HORA = 268
     DETONADORES_POR_PLACA = 40
-    PRODUCCION_NOMINAL_HORA = CAPACIDAD_PLACAS_HORA * DETONADORES_POR_PLACA # 10,720 det/hora
+    PRODUCCION_NOMINAL_HORA = CAPACIDAD_PLACAS_HORA * DETONADORES_POR_PLACA # 10,720 unidades/hora
 
     # Directorios del Sistema para Almacenamiento Temporal de Exportaciones
     # Se utilizan para almacenar reportes PDF, imágenes temporales y logs del sistema.
