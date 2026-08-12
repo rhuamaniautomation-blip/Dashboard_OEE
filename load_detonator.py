@@ -289,7 +289,7 @@ class AppConfig:
     # Especificaciones Técnicas Constantes - Máquina 219
     # Estos valores son críticos para el cálculo de la producción nominal y la capacidad teórica.
     MAQUINA_ID = "219"
-    MAQUINA_NOMBRE = "Carga de Detonadores(219)"
+    MAQUINA_NOMBRE = "Carga de Detonadores"
     CAPACIDAD_PLACAS_HORA = 268
     DETONADORES_POR_PLACA = 40
     PRODUCCION_NOMINAL_HORA = CAPACIDAD_PLACAS_HORA * DETONADORES_POR_PLACA # 10,720 unidades/hora
